@@ -1,0 +1,1 @@
+ALTER TABLE "classifications" ADD COLUMN "missing_fields" jsonb;

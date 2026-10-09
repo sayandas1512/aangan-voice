@@ -6,6 +6,7 @@ import { isAfterHours } from "@/lib/domain/after-hours";
 import {
   findOrCreateCallByVaaniId,
   getBookingForCall,
+  insertAnswers,
   insertBooking,
   updateCall,
 } from "@/lib/db/queries";
@@ -82,6 +83,19 @@ export async function POST(request: Request) {
     meetUrl: result.meetUrl,
     status: "confirmed",
   });
+
+  // The designer note built after the call (lib/domain/note.ts) needs the
+  // caller's name/email, and nowhere else persists them — `bookings` only
+  // has Cal.com-side fields per the brief's schema. Stored as answers
+  // rows rather than adding booking columns, reusing the table that
+  // already exists for "whatever the call collected."
+  await insertAnswers(
+    call.id,
+    [
+      { field: "name", value: name },
+      emailValid ? { field: "email", value: email } : undefined,
+    ].filter((r): r is { field: string; value: string } => r !== undefined)
+  );
 
   if (emailFlagNeeded) {
     await updateCall(call.id, { humanFollowup: true });

@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, lte } from "drizzle-orm";
 import { getDb } from "./client";
 import {
   designers,
@@ -20,6 +20,7 @@ import {
   type NotificationStatus,
   type Outcome,
   type CostKind,
+  type JobStatus,
 } from "./schema";
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,14 @@ export function getDesignerByTelegramChatId(chatId: string) {
     .select()
     .from(designers)
     .where(eq(designers.telegramChatId, chatId))
+    .then((rows) => rows[0]);
+}
+
+export function getDesignerById(id: string) {
+  return getDb()
+    .select()
+    .from(designers)
+    .where(eq(designers.id, id))
     .then((rows) => rows[0]);
 }
 
@@ -147,6 +156,7 @@ export function insertClassification(input: {
   verdict: Verdict;
   reason: string;
   reasonCode?: string;
+  missingFields?: string[];
   model: string;
   latencyMs?: number;
 }) {
@@ -154,6 +164,17 @@ export function insertClassification(input: {
     .insert(classifications)
     .values(input)
     .returning()
+    .then((rows) => rows[0]);
+}
+
+/** A call can in principle be classified more than once (e.g. a retry mid-call); the most recent row wins. */
+export function getLatestClassificationForCall(callId: string) {
+  return getDb()
+    .select()
+    .from(classifications)
+    .where(eq(classifications.callId, callId))
+    .orderBy(desc(classifications.createdAt))
+    .limit(1)
     .then((rows) => rows[0]);
 }
 
@@ -212,6 +233,10 @@ export function markNotificationFailed(id: string, error: string) {
     .where(eq(notifications.id, id));
 }
 
+export function getNotificationsForCall(callId: string) {
+  return getDb().select().from(notifications).where(eq(notifications.callId, callId));
+}
+
 // ---------------------------------------------------------------------------
 // hubspot_sync
 // ---------------------------------------------------------------------------
@@ -223,11 +248,24 @@ export function insertHubspotSyncPending(callId: string) {
     .then((rows) => rows[0]);
 }
 
+export function getHubspotSyncForCall(callId: string) {
+  return getDb()
+    .select()
+    .from(hubspotSync)
+    .where(eq(hubspotSync.callId, callId))
+    .then((rows) => rows[0]);
+}
+
 export function markHubspotSynced(id: string, contactId: string, dealId: string) {
   return getDb()
     .update(hubspotSync)
     .set({ status: "synced", contactId, dealId })
     .where(eq(hubspotSync.id, id));
+}
+
+/** Records a failed sync attempt. `status` stays "pending" while retries remain, or "failed" once exhausted. */
+export function markHubspotAttemptFailed(id: string, attempts: number, lastError: string, status: "pending" | "failed") {
+  return getDb().update(hubspotSync).set({ attempts, lastError, status }).where(eq(hubspotSync.id, id));
 }
 
 // ---------------------------------------------------------------------------
@@ -265,13 +303,31 @@ export function enqueueJob(type: string, payload: unknown, runAt: Date = new Dat
     .then((rows) => rows[0]);
 }
 
+/**
+ * Jobs whose runAt has arrived and are still pending. The original version
+ * of this filtered on status alone, which would have picked up jobs
+ * scheduled for the future the moment they were enqueued — fixed before it
+ * was ever exercised by a real cron run.
+ */
 export function listDueJobs(limit = 20) {
   return getDb()
     .select()
     .from(jobs)
-    .where(eq(jobs.status, "pending"))
+    .where(and(eq(jobs.status, "pending"), lte(jobs.runAt, new Date())))
     .orderBy(jobs.runAt)
     .limit(limit);
+}
+
+export function markJobSucceeded(id: string) {
+  return getDb().update(jobs).set({ status: "succeeded" }).where(eq(jobs.id, id));
+}
+
+/** Reschedules a job for another attempt, or marks it permanently failed once `status` is passed as "failed". */
+export function rescheduleJob(
+  id: string,
+  input: { runAt: Date; attempts: number; lastError: string; status: JobStatus }
+) {
+  return getDb().update(jobs).set(input).where(eq(jobs.id, id));
 }
 
 // ---------------------------------------------------------------------------
@@ -279,4 +335,16 @@ export function listDueJobs(limit = 20) {
 // ---------------------------------------------------------------------------
 export function logEvent(type: string, payload?: unknown) {
   return getDb().insert(events).values({ type, payload: payload as object });
+}
+
+/**
+ * Checks whether an event of this exact `type` has already been logged —
+ * used for webhook-delivery dedup by giving each delivery's idempotency
+ * key (see lib/domain/idempotency.ts) its own exact-match `type` string,
+ * which reuses the existing events_type_idx index rather than needing a
+ * JSONB query.
+ */
+export async function hasEventType(type: string): Promise<boolean> {
+  const rows = await getDb().select({ id: events.id }).from(events).where(eq(events.type, type)).limit(1);
+  return rows.length > 0;
 }

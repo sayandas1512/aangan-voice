@@ -110,6 +110,7 @@ export const classifications = pgTable(
     verdict: varchar("verdict", { length: 10 }).$type<Verdict>().notNull(),
     reason: text("reason").notNull(),
     reasonCode: text("reason_code"),
+    missingFields: jsonb("missing_fields").$type<string[]>(),
     model: text("model").notNull(),
     latencyMs: integer("latency_ms"),
     ...timestamps(),

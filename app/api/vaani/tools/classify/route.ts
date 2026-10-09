@@ -62,6 +62,7 @@ export async function POST(request: Request) {
     verdict: result.verdict,
     reason: result.reason,
     reasonCode: result.reasonCode,
+    missingFields: result.missingFields,
     model: result.model,
     latencyMs: result.latencyMs,
   });

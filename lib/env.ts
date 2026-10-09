@@ -37,6 +37,11 @@ export const envSchema = z.object({
 
   DASHBOARD_PASSWORD: z.string().default("changeme"),
 
+  // Vercel Cron sends "Authorization: Bearer <CRON_SECRET>" automatically
+  // when this is set as a project env var; checked by /api/cron/retry so
+  // the retry worker can't be triggered by an arbitrary public request.
+  CRON_SECRET: z.string().optional(),
+
   VOICE_COST_INR_PER_MIN: z.coerce.number().default(0),
   GEMINI_COST_INR_PER_1K_TOKENS: z.coerce.number().default(0),
   OTHER_FIXED_COST_INR_PER_MONTH: z.coerce.number().default(0),

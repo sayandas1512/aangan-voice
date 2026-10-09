@@ -56,7 +56,7 @@ const mockClient: VaaniClient = {
  * this prefix wrong means every verification silently fails (the docs call
  * this out explicitly as the most common integration mistake).
  */
-function verifyHmacSignature(rawBody: string, signatureHeader: string | null, secret: string): boolean {
+export function verifyHmacSignature(rawBody: string, signatureHeader: string | null, secret: string): boolean {
   if (!signatureHeader) return false;
   const expected = "sha256=" + createHmac("sha256", secret).update(rawBody).digest("hex");
   const expectedBuf = Buffer.from(expected, "utf8");

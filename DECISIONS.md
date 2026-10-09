@@ -3,6 +3,77 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 6 — Call-ended pipeline, retry queue, cron (2026-10-09)
+
+- **`app/api/vaani/webhook/call-ended/route.ts`** receives Vaani's real,
+  confirmed webhook envelope (`{id, type, created, data}`,
+  `X-VaaniVoice-Signature: sha256=…`) rather than a guessed shape. `data`'s
+  own fields are "not guaranteed" per Vaani's docs, so the route tries
+  several plausible key names (`call_id`/`vaani_call_id`/`callId`, etc.)
+  for each field instead of requiring one exact name — genuinely unverified
+  until a real delivery arrives, flagged rather than hidden.
+- **Two-layer idempotency, matching brief section 7 exactly**: delivery-id
+  dedup first (`vaaniDeliveryIdempotencyKey`, catching Vaani's own retries
+  of the *same* delivery — confirmed they reuse the `evt_…` id up to 8
+  times) via a cheap exact-match on `events.type` reusing its existing
+  index; call-id dedup second (`calls.status !== "in_progress"` means
+  already processed). A call already marked complete is never
+  re-processed — prevents double-sending Telegram/HubSpot on a retried
+  webhook.
+- **Found two real gaps while wiring this together, both fixed**:
+  1. The designer note (`lib/domain/note.ts`, Phase 4) needs the caller's
+     name and email, and nothing persisted them after the `book` tool call
+     — `bookings` only has Cal.com-side columns per the brief's own
+     schema. Fixed by having `book`'s route also write `name`/`email` as
+     `answers` rows (reusing the table that already exists for "whatever
+     the call collected" rather than adding new columns).
+  2. `classify`'s `missingFields` (used for the note's "Open questions"
+     line) was computed but never stored — `classifications` had no column
+     for it. Added one (`missing_fields` jsonb, migration
+     `0001_burly_changeling.sql`, applied via the same prepare/test/apply
+     Neon flow as Phase 2) rather than re-deriving an approximation from
+     the answers table at call-end time, which would drift from what
+     classify actually returned.
+- **`listDueJobs` had a real bug fixed before it was ever exercised**: the
+  Phase 2 version filtered only on `status = 'pending'`, with no `runAt`
+  check — a job scheduled an hour out would have been picked up by the
+  very next cron tick. Added `AND runAt <= now()`.
+- **Resend fallback is wired for the decision point but not the send**:
+  `ENABLE_RESEND_FALLBACK` is checked, but actually sending requires a
+  designer email, which isn't in the brief's own `designers` schema
+  (`id, name, calcom_host_id, telegram_chat_id, active` — no email). Rather
+  than add a column the brief didn't ask for, a Telegram-send failure with
+  the flag on logs `resend_fallback_skipped_no_designer_email` instead of
+  silently doing nothing — surfaces the gap the moment anyone flips the
+  flag on, rather than hiding it. The brief's other Resend trigger ("no
+  designer acknowledgement within the escalation window") is **not
+  implemented this phase** — it needs a separate scheduled check
+  (notifications where `sent_at` is old and `acknowledged_at` is still
+  null), which belongs with Phase 7's Telegram acknowledgement buttons,
+  not here.
+- **Exponential backoff**: 1/2/4/8/16/32 minutes (`lib/domain/retry.ts`),
+  capped at 60, giving up after `MAX_RETRY_ATTEMPTS = 6` (≈1 hour of
+  retrying). Arbitrary but reasonable defaults — not specified in the
+  brief; revisit once real HubSpot outage patterns are known.
+- **HubSpot failure never blocks Telegram, verified structurally and by
+  test**: in `processCallEnded`, the Telegram send is fully awaited and
+  resolved (success or logged failure) *before* the HubSpot attempt even
+  starts — not run in parallel with a shared error boundary, which could
+  let a slow/hung HubSpot call delay the function's return and thus the
+  webhook's response to Vaani. `tests/call-ended.test.ts`'s "yes verdict"
+  test asserts both the notification and the hubspot_sync row land
+  correctly in one pipeline run.
+- **Verified three ways**: 86 passing vitest tests (including a dedicated
+  `attemptHubspotSync` failure/backoff/exhaustion suite using a stub
+  HubSpot client, since the mock client always succeeds and can't exercise
+  that path on its own); a real HTTP smoke test (classify → slots → book →
+  call-ended → call-ended again → cron retry) against the dev server, with
+  the resulting Neon rows inspected directly — correctly showed
+  `human_followup: true` because the seeded placeholder designers still
+  have no Telegram chat id, exactly as expected; and `npm run build`.
+  Asked before deleting the 1 test row this left in `production`, same
+  pattern as before.
+
 ## Phase 5 — Mid-call endpoints (2026-10-09)
 
 - **Four routes added**: `app/api/vaani/tools/{classify,slots,book}/route.ts`
