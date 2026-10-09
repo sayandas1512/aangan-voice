@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# pricing is indicative-only and must never be read, loaded, or committed
+pricing.md
+knowledge/pricing.md
+**/pricing.md
