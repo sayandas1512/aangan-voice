@@ -20,7 +20,7 @@ const hasDb = Boolean(process.env.DATABASE_URL);
 // exact type match + this run's time window, rather than a blanket
 // time-window delete, since other test files can log events in the same
 // second when the suite runs with parallelism.
-const testRunStartedAt = new Date();
+const testRunStartedAt = new Date(Date.now() - 60_000); // 60s buffer for clock skew vs Neon's server clock
 const CALL_ENDED_EVENT_TYPES = [
   "classification_missing_at_call_end",
   "no_designer_email",
@@ -78,7 +78,7 @@ afterAll(async () => {
   }
   await getDb()
     .delete(events)
-    .where(and(gte(events.at, testRunStartedAt), lte(events.at, new Date()), inArray(events.type, CALL_ENDED_EVENT_TYPES)));
+    .where(and(gte(events.at, testRunStartedAt), lte(events.at, new Date(Date.now() + 60_000)), inArray(events.type, CALL_ENDED_EVENT_TYPES)));
 });
 
 /** Drives a call through classify + slots + book, as a real call would before ending. */

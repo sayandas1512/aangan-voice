@@ -6,7 +6,7 @@ import { checkPriceGuard, enforcePriceGuard } from "@/lib/domain/price-guard";
 // production events table on a hit. Scope cleanup to events created
 // during this run (at >= testRunStartedAt) rather than tracking ids, so a
 // real violation logged by actual pipeline usage is never touched.
-const testRunStartedAt = new Date();
+const testRunStartedAt = new Date(Date.now() - 60_000); // 60s buffer for clock skew vs Neon's server clock
 const hasDb = Boolean(process.env.DATABASE_URL);
 
 afterAll(async () => {
@@ -15,7 +15,7 @@ afterAll(async () => {
   const { events } = await import("@/lib/db/schema");
   await getDb()
     .delete(events)
-    .where(and(eq(events.type, "price_guard_violation"), gte(events.at, testRunStartedAt), lte(events.at, new Date())));
+    .where(and(eq(events.type, "price_guard_violation"), gte(events.at, testRunStartedAt), lte(events.at, new Date(Date.now() + 60_000))));
 });
 
 describe("checkPriceGuard", () => {

@@ -3,6 +3,85 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 9 (start) — Vaani live wiring, phone → WebRTC pivot (2026-10-09)
+
+- **Found and fixed a clock-skew bug in Phase 8's own event-cleanup fix,
+  the same day it shipped**: `tests/{price-guard,note,summary,call-ended}.test.ts`
+  scope their `price_guard_violation`/call-ended event cleanup to a time
+  window using this machine's `Date.now()`, but the `at` column is
+  timestamped by **Neon's** server clock at insert time
+  (`defaultNow()`). Any drift between the two clocks can put a real
+  event's timestamp just outside the computed window, so it survives
+  `afterAll`'s delete — caught by literally re-checking the `events` table
+  after a clean test run and finding 2 rows that should've been deleted.
+  Fixed by widening both bounds by 60s (`testRunStartedAt - 60s` /
+  `now() + 60s` at cleanup time) instead of trying to use exact
+  boundaries — cheap insurance against a class of bug that's easy to miss
+  because it only sometimes leaves a trace.
+
+**User-directed architecture change**, not a default: the brief's original
+telephony design (a Twilio number, 15s forward-on-no-answer, after-hours
+routing) is replaced with Vaani's browser-based WebRTC session. No phone
+number, no Twilio, no telephony config at all — a caller instead opens a
+web page and talks into their mic. The same `call.completed` webhook with
+a transcript fires either way, so nothing downstream of the webhook
+changes; only how the call begins does.
+
+- **Real Vaani credentials received**: wallet funded (₹100), a real API
+  key provided and stored in `.env.local` (gitignored, never committed).
+- **`app/talk/page.tsx`** mounts Vaani's official drop-in embed widget
+  (`window.VaaniVoice.textvoice(...)`, loaded from
+  `vaanilabs.in/embed/v1/vaanivoice.js`) rather than hand-rolling the raw
+  WebSocket audio protocol — their docs don't fully specify the
+  client→server audio frame format (only server→client frames were
+  documented), and no public npm SDK exists under any name I checked
+  (`vaanivoice`, `@vaanilabs/voice`, `vaani-voice` all 404). The embed
+  widget is Vaani's own supported integration path for exactly this case.
+- **Security trade-off made explicitly, not silently**: Vaani's own docs
+  warn that a key embedded in a public page is visible to anyone via
+  view-source, and recommend minting a second key scoped tightly to
+  `textvoice` with a capped per-minute budget for this use. Asked the
+  user; they chose to reuse the one full-access key for simplicity given
+  the small capped wallet. Recorded here so the trade-off is visible later,
+  not rediscovered by surprise. `NEXT_PUBLIC_VAANI_API_KEY` carries the
+  same value as the server-side `VAANI_API_KEY` deliberately — Next.js
+  requires the literal `NEXT_PUBLIC_` prefix to inline a value into the
+  client bundle, there's no way to alias it.
+- **Could not visually verify the widget renders, from this tool's
+  browser pane** — spent real effort chasing what looked like an infinite
+  reload loop (thousands of buffered requests, repeated
+  `ERR_CONNECTION_REFUSED`/`ERR_BLOCKED_BY_RESPONSE`), which turned out to
+  be the pane's own cumulative session buffer from many hours of earlier
+  testing, not a live bug — the dev server's own log showed exactly 3
+  clean requests for the real test. The actual remaining symptom
+  (`window.VaaniVoice` stays `undefined`, no network entry for
+  `vaanivoice.js` ever appears) was then isolated with `curl`: the script
+  URL is confirmed live, HTTP 200, valid JS, correct CSP/CORS headers
+  (`access-control-allow-origin: *`) — so the script is fine and the
+  failure is specific to this sandboxed preview pane silently restricting
+  injected third-party cross-origin `<script src>` loads, not a bug in
+  the shipped code. Left the dev server running at `localhost:3000/talk`
+  so the user can verify directly in their own browser on the same
+  machine. Added `onError`/missing-global handling to the page regardless,
+  since surfacing a real load failure to a real user is good practice on
+  its own merits.
+- **All languages enabled** per explicit instruction — no code change
+  needed on our side (Vaani-side flow/language config only); updated
+  guidance given to the user for where in their dashboard this lives.
+- **Flow-builder placement is best-effort, not verified**: gave the user a
+  mapping from `agent/context-pack.md` sections to Vaani's documented
+  dashboard sections (personality/voice settings, conversation flow
+  builder, edge-case handling, language config) but explicitly flagged
+  that an API key is not a login session — I cannot see their actual
+  authenticated dashboard UI, so exact field names may differ from the
+  mapping given. Asked them to report back what they actually see.
+- **Still unresolved**: whether Vaani's flow builder can call out to our
+  mid-call tool endpoints (classify/get_slots/book) during a live session
+  — the single biggest open risk, now compounded by the channel change:
+  even if mid-call tools work over phone/PSTN, it's not yet confirmed they
+  work identically over the WebRTC/embed surface. To be confirmed once the
+  user has a flow built and can test it.
+
 ## Phase 8 — Founder dashboard (2026-10-09)
 
 - **Password gate built, but off by default** — a user-directed override of

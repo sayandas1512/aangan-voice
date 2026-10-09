@@ -16,6 +16,15 @@ export const envSchema = z.object({
   VAANI_API_KEY: z.string().optional(),
   VAANI_AGENT_ID: z.string().optional(),
   VAANI_WEBHOOK_SECRET: z.string().optional(),
+  // Deliberately the SAME key as VAANI_API_KEY, under the NEXT_PUBLIC_
+  // prefix Next.js requires to inline a value into the client bundle —
+  // the /app/talk embed widget needs it visible in the page. Vaani's own
+  // docs warn this exposes the key to anyone viewing source; the
+  // recommended mitigation is a separate, tightly-scoped, budget-capped
+  // key, but the user explicitly chose to reuse the one key for
+  // simplicity (see DECISIONS.md).
+  NEXT_PUBLIC_VAANI_API_KEY: z.string().optional(),
+  NEXT_PUBLIC_VAANI_FLOW_ID: z.string().optional(),
 
   CALCOM_API_KEY: z.string().optional(),
   CALCOM_EVENT_TYPE_ID: z.string().optional(),
