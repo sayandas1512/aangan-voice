@@ -3,6 +3,53 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 4 — Domain logic (2026-10-09)
+
+- **Six domain modules** in `lib/domain/`: `price-guard.ts`, `qualify.ts`,
+  `summary.ts`, `note.ts`, `cost.ts`, `after-hours.ts`, `idempotency.ts`
+  (seven, counting both) — matching brief section 12's explicit unit-test
+  list ("price guard, classification parsing, note builder, cost maths,
+  idempotency keys, timezone and after-hours logic") one-for-one.
+- **`qualify.ts` made testable via dependency injection**: added an
+  optional `client` override so tests can inject a deliberately slow fake
+  Gemini client and actually exercise the 2.5s-timeout fallback path.
+  First attempt tried forcing it with `timeoutMs: 0`, which doesn't work —
+  Node's event loop always drains microtasks (the already-resolved mock
+  classify promise) before firing even a 0ms `setTimeout` macrotask, so the
+  timeout branch was silently never hit. Caught by the test failing, not
+  by inspection.
+- **Price guard is deliberately over-broad**: "rate" and "per sq" alone are
+  blocked even in sentences with nothing to do with pricing (documented and
+  tested in `tests/price-guard.test.ts`) — a false positive just means a
+  safe fallback string ships instead of the generated one; a false negative
+  means a price reaches a caller. Includes Hindi-transliterated terms
+  (sasta/mehenga/keemat/daam) alongside English, per brief section 7.
+- **Live Gemini prompt now embeds real rubric content, not filenames**: the
+  first cut of `buildClassifyPrompt()` just told Gemini "use the rubric in
+  knowledge/qualified.md" — which does nothing, since Gemini has no
+  filesystem access. Added `lib/domain/knowledge.ts`
+  (`loadQualifiedRubric`/`loadServicesScope`) and now inline the real file
+  contents into every live classify call, loaded fresh each time (no
+  redeploy needed when the rubric changes). Deliberately **no
+  `loadPricing()` export exists** in that module — not just unused, not
+  present at all, so there's no code path that could accidentally wire it
+  in later.
+- **`/agent` files authored**: `context-pack.md` (Vaani agent config, per
+  section 6 — identity, opening line, the 7 questions, latency handling,
+  situation handling, tool contract), `gemini-classify.prompt.md` and
+  `gemini-summary.prompt.md` (documentation copies of the prompts actually
+  assembled in `lib/integrations/gemini.ts`, since Gemini prompts are code,
+  not static files — these exist for reviewability and to match the
+  brief's repo layout, and must be kept in sync by hand if the real prompt
+  logic changes).
+- **Cost maths (`cost.ts`) is pure, dashboard not built yet**: functions
+  take rates/counts as plain arguments rather than reading `env` directly,
+  so they're trivially unit-testable and the Phase 8 dashboard can call
+  them with whatever period/aggregation it needs. `estimatedPipelineValue`
+  and `actualWonValue` are kept as separate functions on purpose — brief
+  section 10 is explicit that estimate and actual must never be combined
+  into one number.
+
 ## Repo/CI wiring (2026-10-09)
 
 - **Bug found and fixed via CI, not locally**: `npm run typecheck` passed

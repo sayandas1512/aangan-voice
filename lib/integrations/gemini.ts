@@ -1,5 +1,6 @@
 import { integrationMode, env } from "@/lib/env";
 import type { Verdict } from "@/lib/db/schema";
+import { loadQualifiedRubric, loadServicesScope } from "@/lib/domain/knowledge";
 
 export interface ClassifyAnswers {
   propertyType?: string; // home | office
@@ -156,7 +157,7 @@ const liveClient: GeminiClient = {
     if (!env.GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY is required in live mode for Gemini classify.");
     }
-    const prompt = buildClassifyPrompt(answers);
+    const prompt = await buildClassifyPrompt(answers);
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
       {
@@ -217,10 +218,22 @@ const liveClient: GeminiClient = {
   },
 };
 
-function buildClassifyPrompt(answers: ClassifyAnswers): string {
-  return `You are classifying a phone enquiry for an interior design studio using the rubric in knowledge/qualified.md and the scope in knowledge/services.md (load their real contents at call time; never load pricing.md). Answers collected: ${JSON.stringify(
-    answers
-  )}. Return JSON {verdict, reason, reasonCode, missingFields}.`;
+async function buildClassifyPrompt(answers: ClassifyAnswers): Promise<string> {
+  const [rubric, scope] = await Promise.all([loadQualifiedRubric(), loadServicesScope()]);
+  return [
+    "You are classifying a phone enquiry for Aangan Studio (interior design, Pune) as yes, maybe, or no.",
+    "Follow this qualification rubric exactly — it is the studio owner's own criteria:",
+    "--- knowledge/qualified.md ---",
+    rubric,
+    "--- end qualified.md ---",
+    "Scope / service area for the \"in our service area\" and \"real project\" criteria:",
+    "--- knowledge/services.md ---",
+    scope,
+    "--- end services.md ---",
+    "Hard rule: never state, estimate, or imply any price, cost, or rate in your reason — you have not been given pricing information and must not invent one.",
+    `Answers collected so far: ${JSON.stringify(answers)}`,
+    "Return JSON: {verdict: \"yes\"|\"maybe\"|\"no\", reason: string, reasonCode?: string, missingFields: string[]}.",
+  ].join("\n\n");
 }
 
 export function getGeminiClient(): GeminiClient {
