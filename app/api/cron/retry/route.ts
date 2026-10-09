@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { verifyCronRequest } from "@/lib/api/cron-auth";
 import { listDueJobs, markJobSucceeded, rescheduleJob, logEvent } from "@/lib/db/queries";
-import { attemptHubspotSync } from "@/lib/domain/hubspot-sync";
+import { attemptHubspotSync, attemptHubspotOutcomeUpdate } from "@/lib/domain/hubspot-sync";
 import { nextRunAt, isExhausted } from "@/lib/domain/retry";
 
 const HubspotSyncPayloadSchema = z.object({
@@ -15,13 +15,31 @@ const HubspotSyncPayloadSchema = z.object({
   designerName: z.string().optional(),
 });
 
+const HubspotOutcomeUpdatePayloadSchema = z.object({
+  dealId: z.string(),
+  outcome: z.enum(["held", "no_show", "not_fit", "won"]),
+  amountInr: z.number().optional(),
+});
+
+type JobHandler = (payload: unknown, attempt: number) => Promise<{ success: boolean; error?: string }>;
+
+const JOB_HANDLERS: Record<string, { schema: z.ZodType; run: JobHandler }> = {
+  hubspot_sync: {
+    schema: HubspotSyncPayloadSchema,
+    run: (payload, attempt) => attemptHubspotSync(payload as z.infer<typeof HubspotSyncPayloadSchema>, attempt),
+  },
+  hubspot_outcome_update: {
+    schema: HubspotOutcomeUpdatePayloadSchema,
+    run: (payload) => attemptHubspotOutcomeUpdate(payload as z.infer<typeof HubspotOutcomeUpdatePayloadSchema>),
+  },
+};
+
 /**
  * Runs every minute (vercel.json). Picks up due jobs from the retry queue
- * (currently only `hubspot_sync`, brief section 7) and either marks them
- * succeeded, reschedules with exponential backoff, or — once
- * MAX_RETRY_ATTEMPTS is exhausted — marks them permanently failed. Never
- * touches the Telegram path; HubSpot retries are background-only by
- * design.
+ * and either marks them succeeded, reschedules with exponential backoff,
+ * or — once MAX_RETRY_ATTEMPTS is exhausted — marks them permanently
+ * failed. Never touches the designer-email path; both job types here are
+ * HubSpot-side follow-ups that run entirely in the background.
  */
 export async function GET(request: Request) {
   if (!verifyCronRequest(request)) {
@@ -32,7 +50,8 @@ export async function GET(request: Request) {
   const results: Array<{ id: string; type: string; outcome: string }> = [];
 
   for (const job of dueJobs) {
-    if (job.type !== "hubspot_sync") {
+    const handler = JOB_HANDLERS[job.type];
+    if (!handler) {
       await logEvent("unknown_job_type", { jobId: job.id, type: job.type });
       await rescheduleJob(job.id, {
         runAt: job.runAt,
@@ -44,7 +63,7 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const parsedPayload = HubspotSyncPayloadSchema.safeParse(job.payload);
+    const parsedPayload = handler.schema.safeParse(job.payload);
     if (!parsedPayload.success) {
       await logEvent("malformed_job_payload", { jobId: job.id, type: job.type });
       await rescheduleJob(job.id, {
@@ -58,7 +77,7 @@ export async function GET(request: Request) {
     }
 
     const attempt = job.attempts + 1;
-    const result = await attemptHubspotSync(parsedPayload.data, attempt);
+    const result = await handler.run(parsedPayload.data, attempt);
 
     if (result.success) {
       await markJobSucceeded(job.id);

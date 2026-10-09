@@ -17,9 +17,10 @@ import {
 import { isAfterHours } from "@/lib/domain/after-hours";
 import { summarizeCall } from "@/lib/domain/summary";
 import { buildDesignerNote } from "@/lib/domain/note";
+import { buildActionUrl } from "@/lib/domain/action-link";
 import { attemptHubspotSync } from "@/lib/domain/hubspot-sync";
 import { nextRunAt } from "@/lib/domain/retry";
-import { getTelegramClient } from "@/lib/integrations/telegram";
+import { getResendClient } from "@/lib/integrations/resend";
 
 export interface CallEndedInput {
   vaaniCallId: string;
@@ -64,7 +65,7 @@ export async function processCallEnded(input: CallEndedInput): Promise<"processe
 
   // Dedup on vaani_call_id (brief section 7): a call already marked
   // completed/missed/dropped/not_an_enquiry has already run this whole
-  // pipeline — re-running it would double-send Telegram and double-sync
+  // pipeline — re-running it would double-send the designer email and double-sync
   // HubSpot.
   if (call.status !== "in_progress") {
     return "already_processed";
@@ -98,7 +99,7 @@ export async function processCallEnded(input: CallEndedInput): Promise<"processe
   }
 
   if (classification.verdict === "no") {
-    // Neon-only per brief section 7 — no Telegram, no HubSpot deal.
+    // Neon-only per brief section 7 — no designer email, no HubSpot deal.
     return "processed";
   }
 
@@ -116,6 +117,11 @@ export async function processCallEnded(input: CallEndedInput): Promise<"processe
 
   const designer = booking.designerId ? await getDesignerById(booking.designerId) : undefined;
 
+  const actionLinks = (["acknowledge", "held", "no_show", "not_fit", "won"] as const).map((action) => ({
+    label: { acknowledge: "Acknowledge", held: "Held", no_show: "No-show", not_fit: "Not a fit", won: "Won" }[action],
+    url: buildActionUrl({ callId: call.id, bookingId: booking.id, action }),
+  }));
+
   const note = await buildDesignerNote({
     bookingStartIso: (booking.startAt ?? new Date()).toISOString(),
     meetUrl: booking.meetUrl ?? "",
@@ -132,40 +138,34 @@ export async function processCallEnded(input: CallEndedInput): Promise<"processe
     reason: classification.reason,
     summary,
     missingFields: missingFields.map((f) => ANSWER_FIELD_LABELS[f] ?? f),
-    transcriptUrl: `/dashboard/calls/${call.id}`,
+    transcriptUrl: `${env.APP_BASE_URL}/dashboard/calls/${call.id}`,
     callId: call.id,
+    actionLinks,
   });
 
-  // Telegram FIRST (brief section 7) — the designer must act within
-  // minutes; HubSpot can retry in the background without delaying this.
-  if (designer?.telegramChatId) {
-    const notification = await insertNotification({ callId: call.id, channel: "telegram" });
+  // Email FIRST (brief section 7's "Telegram first" — now email, see
+  // DECISIONS.md) — the designer must act within minutes; HubSpot can
+  // retry in the background without delaying this.
+  if (designer?.email) {
+    const notification = await insertNotification({ callId: call.id, channel: "email" });
     try {
-      await getTelegramClient().sendDesignerNote({
-        chatId: designer.telegramChatId,
+      await getResendClient().sendEmail({
+        to: designer.email,
+        subject: `New consultation booked — ${answersMap.name || "Caller"}`,
         text: note,
-        callId: call.id,
       });
       await markNotificationSent(notification.id);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await markNotificationFailed(notification.id, message);
-      await logEvent("telegram_send_failed", { callId: call.id, error: message });
-
-      if (env.ENABLE_RESEND_FALLBACK) {
-        // Resend needs a designer email, which isn't in the current
-        // designers schema (brief section 9 only lists calcom_host_id and
-        // telegram_chat_id) — logged rather than silently skipped, so
-        // turning the flag on surfaces the gap instead of hiding it.
-        await logEvent("resend_fallback_skipped_no_designer_email", { callId: call.id });
-      }
+      await logEvent("designer_email_send_failed", { callId: call.id, error: message });
     }
   } else {
-    await logEvent("no_designer_telegram_chat_id", { callId: call.id, designerId: booking.designerId });
+    await logEvent("no_designer_email", { callId: call.id, designerId: booking.designerId });
     await updateCall(call.id, { humanFollowup: true });
   }
 
-  // HubSpot SECOND — yes/maybe only, never blocks the Telegram path above.
+  // HubSpot SECOND — yes/maybe only, never blocks the email path above.
   const hubspotSyncRow = await insertHubspotSyncPending(call.id);
   const syncResult = await attemptHubspotSync(
     {

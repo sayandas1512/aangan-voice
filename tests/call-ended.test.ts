@@ -10,14 +10,14 @@ import { CALL_FIXTURES } from "./fixtures/calls";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
-// The seeded placeholder designers (scripts/seed.ts) have no telegramChatId
-// — real-world, it's filled in once a designer registers via /start. The
-// Cal.com mock round-robins across all active designers with no guaranteed
-// query ordering, so rather than guess which one a given booking lands on,
-// patch all of them with a placeholder chat id for this file's duration,
-// and restore each one's original value (not delete the rows — they
-// aren't this file's to remove) in afterAll.
-const patchedDesigners: Array<{ id: string; originalChatId: string | null }> = [];
+// The seeded placeholder designers (scripts/seed.ts) have no email — a
+// real deployment fills it in once the founder sets it up. The Cal.com
+// mock round-robins across all active designers with no guaranteed query
+// ordering, so rather than guess which one a given booking lands on, patch
+// all of them with a placeholder email for this file's duration, and
+// restore each one's original value (not delete the rows — they aren't
+// this file's to remove) in afterAll.
+const patchedDesigners: Array<{ id: string; originalEmail: string | null }> = [];
 
 beforeAll(async () => {
   if (!hasDb) return;
@@ -25,10 +25,10 @@ beforeAll(async () => {
   const { getDb } = await import("@/lib/db/client");
   const { designers: designersTable } = await import("@/lib/db/schema");
   for (const d of designers) {
-    patchedDesigners.push({ id: d.id, originalChatId: d.telegramChatId });
+    patchedDesigners.push({ id: d.id, originalEmail: d.email });
     await getDb()
       .update(designersTable)
-      .set({ telegramChatId: `test-chat-${d.id}` })
+      .set({ email: `test-designer-${d.id}@example.com` })
       .where(eq(designersTable.id, d.id));
   }
 });
@@ -56,7 +56,7 @@ afterAll(async () => {
     await getDb().delete(calls).where(inArray(calls.vaaniCallId, createdCallIds));
   }
   for (const d of patchedDesigners) {
-    await getDb().update(designersTable).set({ telegramChatId: d.originalChatId }).where(eq(designersTable.id, d.id));
+    await getDb().update(designersTable).set({ email: d.originalEmail }).where(eq(designersTable.id, d.id));
   }
 });
 
@@ -81,7 +81,7 @@ async function setUpBookedCall(fixture: (typeof CALL_FIXTURES)[number]) {
 }
 
 describe.skipIf(!hasDb)("processCallEnded", () => {
-  it("yes verdict: sends the Telegram note and syncs HubSpot", async () => {
+  it("yes verdict: sends the designer email and syncs HubSpot", async () => {
     const fixture = CALL_FIXTURES.find((f) => f.id === "T01")!;
     const callId = await setUpBookedCall(fixture);
 
@@ -98,7 +98,7 @@ describe.skipIf(!hasDb)("processCallEnded", () => {
 
     const notifications = await getNotificationsForCall(call!.id);
     expect(notifications.length).toBe(1);
-    expect(notifications[0].channel).toBe("telegram");
+    expect(notifications[0].channel).toBe("email");
     expect(notifications[0].status).toBe("sent");
 
     const hubspotSync = await getHubspotSyncForCall(call!.id);
@@ -121,7 +121,7 @@ describe.skipIf(!hasDb)("processCallEnded", () => {
     expect(notifications.length).toBe(1); // not 2 — the second run did nothing
   });
 
-  it("no verdict: persists the call but never touches Telegram or HubSpot", async () => {
+  it("no verdict: persists the call but never sends an email or touches HubSpot", async () => {
     const fixture = CALL_FIXTURES.find((f) => f.id === "T03")!; // out_of_area -> no
     const callId = testCallId();
     await classifyRoute(

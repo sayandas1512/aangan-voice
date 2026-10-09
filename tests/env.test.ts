@@ -10,8 +10,9 @@ describe("env", () => {
     expect(integrationMode("VAANI")).toBe(env.INTEGRATIONS_MODE);
   });
 
-  it("defaults ENABLE_RESEND_FALLBACK to false", () => {
-    expect(env.ENABLE_RESEND_FALLBACK).toBe(false);
+  it("defaults ACTION_LINK_SECRET and APP_BASE_URL so mock mode needs no config", () => {
+    expect(env.ACTION_LINK_SECRET).toBeTruthy();
+    expect(env.APP_BASE_URL).toBe("http://localhost:3000");
   });
 
   it("rejects a blank-but-present *_MODE var directly against the schema", () => {

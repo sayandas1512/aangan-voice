@@ -19,6 +19,8 @@ export interface DesignerNoteInput {
   missingFields: string[];
   transcriptUrl: string;
   callId?: string;
+  /** Acknowledge/Held/No-show/Not a fit/Won — signed GET links (lib/domain/action-link.ts), replacing Telegram's inline buttons. */
+  actionLinks: { label: string; url: string }[];
 }
 
 const SAFE_FALLBACK_NOTE =
@@ -39,12 +41,13 @@ function formatIstTime(startIso: string): string {
 }
 
 /**
- * Builds the Telegram text sent to the booked designer (brief section 8).
- * Note: a caller-volunteered budget is a caller-provided fact and is
- * allowed to reach the designer, but per the template this note only ever
- * says "Budget given: yes/no" — the actual figure lives in the transcript,
- * never in generated text. Still passed through the price guard like every
- * other generated string, as a defense-in-depth measure.
+ * Builds the designer-handoff email body (brief section 8's note
+ * structure, originally designed for Telegram — now sent via Resend, see
+ * DECISIONS.md). Note: a caller-volunteered budget is a caller-provided
+ * fact and is allowed to reach the designer, but per the template this
+ * note only ever says "Budget given: yes/no" — the actual figure lives in
+ * the transcript, never in generated text. Still passed through the price
+ * guard like every other generated string, as a defense-in-depth measure.
  */
 export async function buildDesignerNote(input: DesignerNoteInput): Promise<string> {
   const project = [input.propertyType, input.area, input.sizeSqFt ? `${input.sizeSqFt} sq ft` : undefined, input.workType]
@@ -63,6 +66,8 @@ export async function buildDesignerNote(input: DesignerNoteInput): Promise<strin
     `Summary: ${input.summary}`,
     `Open questions: ${openQuestions}`,
     `Transcript: ${input.transcriptUrl}`,
+    "",
+    ...input.actionLinks.map((link) => `${link.label}: ${link.url}`),
   ];
 
   const text = lines.join("\n");

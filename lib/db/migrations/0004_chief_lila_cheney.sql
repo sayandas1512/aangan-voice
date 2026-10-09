@@ -1,0 +1,1 @@
+ALTER TABLE "designers" DROP COLUMN "telegram_chat_id";

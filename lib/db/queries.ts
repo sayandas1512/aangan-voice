@@ -30,14 +30,6 @@ export function listActiveDesigners() {
   return getDb().select().from(designers).where(eq(designers.active, true));
 }
 
-export function getDesignerByTelegramChatId(chatId: string) {
-  return getDb()
-    .select()
-    .from(designers)
-    .where(eq(designers.telegramChatId, chatId))
-    .then((rows) => rows[0]);
-}
-
 export function getDesignerById(id: string) {
   return getDb()
     .select()
@@ -55,6 +47,10 @@ export function getCallByVaaniCallId(vaaniCallId: string) {
     .from(calls)
     .where(eq(calls.vaaniCallId, vaaniCallId))
     .then((rows) => rows[0]);
+}
+
+export function getCallById(id: string) {
+  return getDb().select().from(calls).where(eq(calls.id, id)).then((rows) => rows[0]);
 }
 
 export function createCall(input: {
@@ -204,6 +200,10 @@ export function getBookingForCall(callId: string) {
     .then((rows) => rows[0]);
 }
 
+export function getBookingById(id: string) {
+  return getDb().select().from(bookings).where(eq(bookings.id, id)).then((rows) => rows[0]);
+}
+
 // ---------------------------------------------------------------------------
 // notifications
 // ---------------------------------------------------------------------------
@@ -230,6 +230,13 @@ export function markNotificationFailed(id: string, error: string) {
   return getDb()
     .update(notifications)
     .set({ status: "failed", error })
+    .where(eq(notifications.id, id));
+}
+
+export function markNotificationAcknowledged(id: string) {
+  return getDb()
+    .update(notifications)
+    .set({ status: "acknowledged", acknowledgedAt: new Date() })
     .where(eq(notifications.id, id));
 }
 
@@ -277,6 +284,10 @@ export function insertOutcome(input: { bookingId: string; outcome: Outcome; amou
     .values(input)
     .returning()
     .then((rows) => rows[0]);
+}
+
+export function getOutcomesForBooking(bookingId: string) {
+  return getDb().select().from(outcomes).where(eq(outcomes.bookingId, bookingId));
 }
 
 // ---------------------------------------------------------------------------

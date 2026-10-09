@@ -1,6 +1,6 @@
 import { getGeminiClient } from "@/lib/integrations/gemini";
 import { getCalcomClient } from "@/lib/integrations/calcom";
-import { getTelegramClient } from "@/lib/integrations/telegram";
+import { getResendClient } from "@/lib/integrations/resend";
 import { getHubspotClient } from "@/lib/integrations/hubspot";
 import { listActiveDesigners } from "@/lib/db/queries";
 import { CALL_FIXTURES, type CallFixture } from "../tests/fixtures/calls";
@@ -38,7 +38,7 @@ async function runFixture(fixture: CallFixture) {
   }
 
   if (classification.verdict === "no") {
-    console.log("  -> agent closes politely. No booking, no Telegram, no HubSpot deal.");
+    console.log("  -> agent closes politely. No booking, no email, no HubSpot deal.");
     return { fixture, classification, booking: null };
   }
 
@@ -63,14 +63,14 @@ async function runFixture(fixture: CallFixture) {
 
   const designers = await listActiveDesigners();
   const designer = designers.find((d) => d.id === booking.designerId);
-  const telegram = getTelegramClient();
+  const resend = getResendClient();
   const note = buildQuickNote(fixture, classification.reason, booking);
-  const sent = await telegram.sendDesignerNote({
-    chatId: designer?.telegramChatId ?? "mock-chat-id",
+  const sent = await resend.sendEmail({
+    to: designer?.email ?? "mock-designer@example.com",
+    subject: `New consultation booked — ${fixture.callerName}`,
     text: note,
-    callId: fixture.id,
   });
-  console.log(`telegram -> messageId=${sent.messageId}`);
+  console.log(`email -> id=${sent.id}`);
 
   const hubspot = getHubspotClient();
   const synced = await hubspot.upsertContactAndDeal({

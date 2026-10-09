@@ -3,6 +3,94 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 7 — Telegram → email pivot, designer outcome actions (2026-10-09)
+
+**User-directed architecture change**, not a default I chose: mid-build on
+what was originally planned as "Phase 7: Telegram bot webhook," the user
+asked to replace Telegram entirely with Resend/email as the designer
+handoff channel, with outcome actions as clickable links rather than
+Telegram's inline buttons, and a tiny web form for "Won" since a link
+can't collect free-text input. Confirmed both decisions before building
+(full Telegram removal, not just "default to email but keep the code").
+
+- **Telegram fully removed**: deleted `lib/integrations/telegram.ts`
+  entirely; no `/start` registration flow or bot webhook was ever built
+  (the plan to build `app/api/telegram/webhook` was abandoned before any
+  code existed for it, so there was nothing to delete there). Removed
+  `TELEGRAM_MODE`/`TELEGRAM_BOT_TOKEN`/`TELEGRAM_WEBHOOK_SECRET` from
+  `lib/env.ts` and `.env.example`, and `designers.telegram_chat_id` from
+  the schema (two-step migration — see below).
+- **Resend promoted from "optional fallback" to the only channel**:
+  removed `ENABLE_RESEND_FALLBACK` entirely (it no longer means anything —
+  there's nothing left for email to be a fallback *to*). `RESEND_API_KEY`/
+  `RESEND_FROM` stay optional in the schema (mock mode needs neither) but
+  are effectively required once `INTEGRATIONS_MODE`/`RESEND_MODE` is live.
+- **Outcome actions are stateless signed links, not a stored
+  conversation**: an earlier version of this phase (before the pivot) had
+  already built and *applied* a `pending_prompts` table for a Telegram
+  "what was the amount?" follow-up message — tracking per-chat
+  conversational state, since Vercel functions are stateless between
+  requests. The email+link design doesn't need that: each of the 5 links
+  (`lib/domain/action-link.ts`) carries `{callId, bookingId, action}` as an
+  HMAC-signed, expiring token (`ACTION_LINK_SECRET`, 30-day TTL,
+  constant-time verification) — the state lives in the link itself, not in
+  a database row. The `pending_prompts` table was dropped again in the
+  same phase it was added, via a second migration
+  (`0003_gigantic_dagger.sql`) — a real example of a design explored,
+  built, proven premature, and cleanly reverted rather than left as dead
+  code once the requirements changed mid-phase.
+- **Schema migrations needed two steps to avoid drizzle-kit's
+  rename-ambiguity prompt**: dropping `telegram_chat_id` and adding
+  `email` on the same table in one `drizzle-kit generate` made it try to
+  interactively ask "is this a rename?" (text→text, same table) — which
+  fails outright in a non-TTY shell (`Interactive prompts require a TTY
+  terminal`). Split into two migrations (`0003`: add `email` +
+  drop `pending_prompts`; `0004`: drop `telegram_chat_id` only) so neither
+  diff was ambiguous. Both applied via the usual prepare/test-on-temp-
+  branch/apply Neon flow.
+- **"Won" needs a form, not a link, so it's two routes in one**:
+  `GET /api/notifications/action?token=...` records the outcome directly
+  for acknowledge/held/no_show/not_fit, but for `won` it renders a minimal
+  HTML page with an amount input that `POST`s back to the same path
+  (reusing the same token, re-verified server-side — the token proves
+  *which* booking, the form only supplies the number). No client JS, no
+  new dependency — plain HTML forms submit natively.
+- **Outcome recording is idempotent by outcome type**
+  (`lib/domain/outcome-action.ts`): clicking "Held" twice (a reloaded
+  confirmation page, a doubly-delivered email open) checks existing
+  `outcomes` rows for that booking+type before inserting again. A
+  genuinely different later outcome (e.g. "won" after an earlier "held")
+  is still allowed to add a second row — outcomes are treated as a
+  timeline, not a single mutable status.
+- **HubSpot outcome updates reuse the Phase 6 retry-queue machinery**:
+  added `attemptHubspotOutcomeUpdate` alongside `attemptHubspotSync`
+  (same never-throws-failure-is-recorded-and-returned shape) and a second
+  job type, `hubspot_outcome_update`, handled by the same
+  `/api/cron/retry` worker — refactored into a small per-job-type handler
+  map instead of duplicating the due-jobs loop. Caught a real bug while
+  doing this refactor: the first draft of the generic handler hardcoded
+  `attempt = 1` for every job type instead of threading through the
+  computed retry attempt number, which would have broken `hubspot_sync`'s
+  backoff/exhaustion tracking on every retry past the first. Fixed before
+  it shipped.
+- **Verified with 97 passing tests** (11 new: `action-link.test.ts`,
+  `api-notifications-action.test.ts`, plus updates across
+  `call-ended.test.ts`/`note.test.ts`/`env.test.ts` for the channel
+  switch), a production build, and direct inspection of a real generated
+  email (via the test suite's console output) confirming the five signed
+  links round-trip correctly end to end. One genuine test-writing mistake
+  caught and fixed along the way: an assertion expected `"950,000"` but
+  `toLocaleString("en-IN")` correctly groups by lakh (`"9,50,000"`) — the
+  test was wrong, not the code.
+- **Two Neon write mishaps from an unrelated transient DNS failure,
+  found and fixed**: a mid-run network outage (`getaddrinfo ENOTFOUND
+  api.c-4.ap-southeast-1.aws.neon.tech`) killed a test run before its
+  cleanup hooks could run, leaving 4 stale `calls` rows and 2 designers
+  with leftover test email addresses in `production`. Both found by
+  checking actual DB state after the suite reported green, not assumed
+  clean — deleted/reset by hand (same user-approved `test-%` pattern as
+  prior phases) and reverified at zero / `email IS NULL`.
+
 ## Phase 6 — Call-ended pipeline, retry queue, cron (2026-10-09)
 
 - **`app/api/vaani/webhook/call-ended/route.ts`** receives Vaani's real,

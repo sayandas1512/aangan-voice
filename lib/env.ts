@@ -5,7 +5,6 @@ export const envSchema = z.object({
   VAANI_MODE: z.enum(["mock", "live"]).optional(),
   GEMINI_MODE: z.enum(["mock", "live"]).optional(),
   CALCOM_MODE: z.enum(["mock", "live"]).optional(),
-  TELEGRAM_MODE: z.enum(["mock", "live"]).optional(),
   HUBSPOT_MODE: z.enum(["mock", "live"]).optional(),
   RESEND_MODE: z.enum(["mock", "live"]).optional(),
 
@@ -21,19 +20,16 @@ export const envSchema = z.object({
   CALCOM_API_KEY: z.string().optional(),
   CALCOM_EVENT_TYPE_ID: z.string().optional(),
 
-  TELEGRAM_BOT_TOKEN: z.string().optional(),
-  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
-
   HUBSPOT_ACCESS_TOKEN: z.string().optional(),
   HUBSPOT_PIPELINE_ID: z.string().optional(),
   HUBSPOT_STAGE_BOOKED: z.string().optional(),
 
+  // Resend is the designer-handoff channel (replaced Telegram — see
+  // DECISIONS.md). RESEND_FROM is required once RESEND_MODE/INTEGRATIONS_MODE
+  // is "live"; unlike the brief's original "optional fallback" framing,
+  // there's no feature flag here since it's no longer optional.
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM: z.string().optional(),
-  ENABLE_RESEND_FALLBACK: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((v) => v === "true"),
 
   DASHBOARD_PASSWORD: z.string().default("changeme"),
 
@@ -41,6 +37,16 @@ export const envSchema = z.object({
   // when this is set as a project env var; checked by /api/cron/retry so
   // the retry worker can't be triggered by an arbitrary public request.
   CRON_SECRET: z.string().optional(),
+
+  // Signs the outcome-action links (Acknowledge/Held/No-show/Not a
+  // fit/Won) embedded in the designer email — see lib/domain/action-link.ts.
+  // Required once a real email actually needs to be sent (live mode);
+  // defaults to a fixed dev-only value so mock mode and tests don't need
+  // one configured.
+  ACTION_LINK_SECRET: z.string().default("dev-only-insecure-action-link-secret"),
+  // Absolute origin used to build those links (an email can't use a
+  // relative path) — e.g. https://aangan-voice.vercel.app in production.
+  APP_BASE_URL: z.string().default("http://localhost:3000"),
 
   VOICE_COST_INR_PER_MIN: z.coerce.number().default(0),
   GEMINI_COST_INR_PER_1K_TOKENS: z.coerce.number().default(0),
@@ -75,7 +81,7 @@ function loadEnv(): Env {
 
 export const env = loadEnv();
 
-export function integrationMode(service: "VAANI" | "GEMINI" | "CALCOM" | "TELEGRAM" | "HUBSPOT" | "RESEND"): "mock" | "live" {
+export function integrationMode(service: "VAANI" | "GEMINI" | "CALCOM" | "HUBSPOT" | "RESEND"): "mock" | "live" {
   const key = `${service}_MODE` as const;
   const override = (env as unknown as Record<string, string | undefined>)[key];
   return (override as "mock" | "live" | undefined) ?? env.INTEGRATIONS_MODE;

@@ -2,10 +2,10 @@ import { getDb } from "@/lib/db/client";
 import { designers } from "@/lib/db/schema";
 
 // Placeholder designers per DECISIONS.md item 7 — replace with real names,
-// Cal.com host IDs, and Telegram chat IDs once supplied.
+// Cal.com host IDs, and emails once supplied.
 const PLACEHOLDER_DESIGNERS = [
-  { name: "Asha", calcomHostId: "placeholder-asha", telegramChatId: null, active: true },
-  { name: "Rohan", calcomHostId: "placeholder-rohan", telegramChatId: null, active: true },
+  { name: "Asha", calcomHostId: "placeholder-asha", email: null, active: true },
+  { name: "Rohan", calcomHostId: "placeholder-rohan", email: null, active: true },
 ];
 
 async function main() {

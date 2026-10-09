@@ -2,7 +2,7 @@
 Documentation copy of the live post-call summary prompt. Assembled in
 lib/integrations/gemini.ts (liveClient.summarize) and always passed
 through lib/domain/price-guard.ts's enforcePriceGuard() before it reaches
-Neon, Telegram, or HubSpot — this prompt asking the model not to state a
+Neon, the designer email, or HubSpot — this prompt asking the model not to state a
 price is the first layer of defense, not the only one.
 -->
 
@@ -20,7 +20,7 @@ Transcript:
 
 - Model: `env.GEMINI_MODEL`
 - No `responseSchema` — free-text summary, 3-4 lines, used directly in the
-  designer Telegram note (`lib/domain/note.ts`) and the HubSpot note.
+  designer email note (`lib/domain/note.ts`) and the HubSpot note.
 
 ## Defense in depth
 

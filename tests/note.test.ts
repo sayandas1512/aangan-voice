@@ -20,6 +20,13 @@ function baseInput(overrides: Partial<DesignerNoteInput> = {}): DesignerNoteInpu
     missingFields: [],
     transcriptUrl: "https://dashboard.example.com/calls/T01",
     callId: "T01",
+    actionLinks: [
+      { label: "Acknowledge", url: "https://app.example.com/api/notifications/action?token=ack" },
+      { label: "Held", url: "https://app.example.com/api/notifications/action?token=held" },
+      { label: "No-show", url: "https://app.example.com/api/notifications/action?token=noshow" },
+      { label: "Not a fit", url: "https://app.example.com/api/notifications/action?token=notfit" },
+      { label: "Won", url: "https://app.example.com/api/notifications/action?token=won" },
+    ],
     ...overrides,
   };
 }
@@ -34,6 +41,12 @@ describe("buildDesignerNote", () => {
     expect(note).toContain("Kothrud");
     expect(note).toContain("Verdict: yes because");
     expect(note).toContain("Transcript: https://dashboard.example.com/calls/T01");
+  });
+
+  it("includes all five action links, replacing Telegram's inline buttons", async () => {
+    const note = await buildDesignerNote(baseInput());
+    expect(note).toContain("Acknowledge: https://app.example.com/api/notifications/action?token=ack");
+    expect(note).toContain("Won: https://app.example.com/api/notifications/action?token=won");
   });
 
   it("never includes a budget figure, only yes/no, even when budgetGiven is true", async () => {

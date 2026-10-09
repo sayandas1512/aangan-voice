@@ -29,7 +29,7 @@ export const designers = pgTable("designers", {
   id: id(),
   name: text("name").notNull(),
   calcomHostId: text("calcom_host_id"),
-  telegramChatId: text("telegram_chat_id"),
+  email: text("email"),
   active: boolean("active").notNull().default(true),
   ...timestamps(),
 });
@@ -144,7 +144,7 @@ export const bookings = pgTable(
 // ---------------------------------------------------------------------------
 // notifications — Telegram/email delivery of the designer note
 // ---------------------------------------------------------------------------
-export const notificationChannelEnum = ["telegram", "email"] as const;
+export const notificationChannelEnum = ["email"] as const;
 export type NotificationChannel = (typeof notificationChannelEnum)[number];
 
 export const notificationStatusEnum = ["pending", "sent", "failed", "acknowledged"] as const;
