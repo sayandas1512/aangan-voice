@@ -63,6 +63,34 @@ export function createCall(input: {
     .then((rows) => rows[0]);
 }
 
+/**
+ * Mid-call tool endpoints (classify/slots/book) fire before the call-ended
+ * webhook ever arrives, so there may be no `calls` row yet when the first
+ * tool call lands — this creates a stub row on first touch (using the
+ * unique vaani_call_id index to make concurrent calls safe) and returns
+ * the existing row on every call after that, so classifications/bookings
+ * always have a valid call_id to reference.
+ */
+export async function findOrCreateCallByVaaniId(input: {
+  vaaniCallId: string;
+  callerPhone: string;
+  startedAt: Date;
+  afterHours: boolean;
+  route?: CallRoute;
+}) {
+  const inserted = await getDb()
+    .insert(calls)
+    .values(input)
+    .onConflictDoNothing({ target: calls.vaaniCallId })
+    .returning();
+  if (inserted[0]) return inserted[0];
+  const existing = await getCallByVaaniCallId(input.vaaniCallId);
+  if (!existing) {
+    throw new Error(`findOrCreateCallByVaaniId: no row after conflict for ${input.vaaniCallId}`);
+  }
+  return existing;
+}
+
 export function updateCall(
   callId: string,
   patch: Partial<{
@@ -81,6 +109,16 @@ export function updateCall(
 
 export function listRecentCalls(limit = 50) {
   return getDb().select().from(calls).orderBy(desc(calls.startedAt)).limit(limit);
+}
+
+export function getMostRecentCallByPhone(callerPhone: string) {
+  return getDb()
+    .select()
+    .from(calls)
+    .where(eq(calls.callerPhone, callerPhone))
+    .orderBy(desc(calls.startedAt))
+    .limit(1)
+    .then((rows) => rows[0]);
 }
 
 // ---------------------------------------------------------------------------

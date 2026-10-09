@@ -1,0 +1,138 @@
+import { describe, expect, it, afterAll } from "vitest";
+import { randomUUID } from "node:crypto";
+import { inArray } from "drizzle-orm";
+import { POST as classifyRoute } from "@/app/api/vaani/tools/classify/route";
+import { POST as slotsRoute } from "@/app/api/vaani/tools/slots/route";
+import { POST as bookRoute } from "@/app/api/vaani/tools/book/route";
+import { POST as preCallRoute } from "@/app/api/vaani/pre-call/route";
+import { CALL_FIXTURES } from "./fixtures/calls";
+
+const hasDb = Boolean(process.env.DATABASE_URL);
+
+function jsonRequest(body: unknown) {
+  return new Request("https://example.com", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// These routes write real rows to Neon (classify/book create a `calls` row
+// via findOrCreateCallByVaaniId). Every call_id this file hands to a route
+// is tracked here and deleted in afterAll, so this suite — which runs on
+// every local `npm test` and every CI run — doesn't permanently litter the
+// shared production branch with test-* rows on each run.
+const createdCallIds: string[] = [];
+function testCallId(): string {
+  const id = `test-${randomUUID()}`;
+  createdCallIds.push(id);
+  return id;
+}
+
+afterAll(async () => {
+  if (!hasDb || createdCallIds.length === 0) return;
+  const { getDb } = await import("@/lib/db/client");
+  const { calls } = await import("@/lib/db/schema");
+  await getDb().delete(calls).where(inArray(calls.vaaniCallId, createdCallIds));
+});
+
+describe.skipIf(!hasDb)("mid-call tool routes", () => {
+  it("classify: persists the call + answers and returns the expected verdict", async () => {
+    const fixture = CALL_FIXTURES.find((f) => f.id === "T01")!;
+    const callId = testCallId();
+
+    const res = await classifyRoute(
+      jsonRequest({
+        call_id: callId,
+        caller_phone: fixture.callerPhone,
+        answers: fixture.answers,
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.verdict).toBe(fixture.expectedVerdict);
+  });
+
+  it("classify: rejects a malformed body with 400, not a 500", async () => {
+    const res = await classifyRoute(jsonRequest({ not: "valid" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("slots: returns the mock slots in the tool-contract shape", async () => {
+    const res = await slotsRoute(jsonRequest({ call_id: testCallId() }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.slots)).toBe(true);
+    if (body.slots.length > 0) {
+      expect(body.slots[0]).toHaveProperty("id");
+      expect(body.slots[0]).toHaveProperty("start_iso");
+      expect(body.slots[0]).toHaveProperty("designer_first_name");
+    }
+  });
+
+  it("book: books a fetched slot and returns a confirmation", async () => {
+    const callId = testCallId();
+    const slotsRes = await slotsRoute(jsonRequest({ call_id: callId }));
+    const { slots } = await slotsRes.json();
+    expect(slots.length).toBeGreaterThan(0);
+
+    const res = await bookRoute(
+      jsonRequest({
+        call_id: callId,
+        caller_phone: "+91-90000-09999",
+        slot_id: slots[0].id,
+        name: "Test Caller",
+        email: "test@example.com",
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("confirmed");
+    expect(body.meet_url).toContain(slots[0].id);
+  });
+
+  it("book: a second book call for the same call_id is idempotent, not a double booking", async () => {
+    const callId = testCallId();
+    const slotsRes = await slotsRoute(jsonRequest({ call_id: callId }));
+    const { slots } = await slotsRes.json();
+
+    const first = await bookRoute(
+      jsonRequest({ call_id: callId, caller_phone: "+91-90000-08888", slot_id: slots[0].id, name: "A" })
+    );
+    const firstBody = await first.json();
+
+    const second = await bookRoute(
+      jsonRequest({ call_id: callId, caller_phone: "+91-90000-08888", slot_id: slots[1].id, name: "A" })
+    );
+    const secondBody = await second.json();
+
+    expect(secondBody.status).toBe("confirmed");
+    expect(secondBody.meet_url).toBe(firstBody.meet_url);
+  });
+
+  it("book: a missing/malformed email still books, phone-only, instead of failing", async () => {
+    const callId = testCallId();
+    const slotsRes = await slotsRoute(jsonRequest({ call_id: callId }));
+    const { slots } = await slotsRes.json();
+
+    const res = await bookRoute(
+      jsonRequest({
+        call_id: callId,
+        caller_phone: "+91-90000-07777",
+        slot_id: slots[0].id,
+        name: "No Email Caller",
+        email: "not-an-email",
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("confirmed");
+  });
+
+  it("pre-call: a never-seen phone number is not a returning caller", async () => {
+    const res = await preCallRoute(jsonRequest({ caller_phone: `+91-9${randomUUID().slice(0, 9)}` }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.is_returning_caller).toBe(false);
+  });
+});

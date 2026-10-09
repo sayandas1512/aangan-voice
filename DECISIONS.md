@@ -3,6 +3,68 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 5 — Mid-call endpoints (2026-10-09)
+
+- **Four routes added**: `app/api/vaani/tools/{classify,slots,book}/route.ts`
+  and `app/api/vaani/pre-call/route.ts`. Each: zod-validates the body (400
+  on failure, never a 500 from bad input), writes to Neon before any slow
+  side effect, and is idempotent where it matters.
+- **`classify` and `slots` both reuse their Phase 4 domain wrappers**
+  (`lib/domain/qualify.ts`, new `lib/domain/slots.ts`) for the 2.5s-timeout
+  /no-dead-air behavior — the route handlers themselves don't duplicate
+  that logic, they just persist the result and flag `human_followup` on
+  timeout.
+- **Call rows are created lazily, mid-call, not by the webhook.** Added
+  `findOrCreateCallByVaaniId` (`lib/db/queries.ts`) using
+  `onConflictDoNothing` on the unique `vaani_call_id` index, since
+  `classify`/`book` may be the first time a given call is ever seen — the
+  call-ended webhook (Phase 6) will update this same row, not create a
+  second one.
+- **`book` is idempotent against the DB, not just in-memory**: a second
+  `book` call for a `call_id` that already has a confirmed booking returns
+  the existing booking instead of calling Cal.com again. Verified with a
+  real test (`tests/api-vaani-tools.test.ts`) that books twice with two
+  *different* slot ids for the same call and asserts the second response's
+  `meet_url` matches the first — proving it short-circuited rather than
+  booking the second slot too.
+- **Email handling matches brief section 7 exactly**: a missing or
+  malformed email doesn't fail the booking — it proceeds phone-only and
+  flags `human_followup`. Validated with a plain regex rather than
+  `zod`'s `.email()`, to sidestep any zod-v4 format-validator
+  version churn and keep the check trivially testable in isolation.
+- **Tool-call auth is a placeholder, clearly marked as such**
+  (`lib/api/vaani-tool-auth.ts`): a constant-time shared-secret header
+  check against `VAANI_WEBHOOK_SECRET`, skipped entirely in mock mode. This
+  is **not** the confirmed webhook HMAC scheme from the earlier Vaani docs
+  review — that's for Vaani's registered async webhooks
+  (`call.completed` etc.), a different mechanism from whatever the flow
+  builder uses to call *our* tool endpoints mid-call, which is still
+  unconfirmed. Denies-by-default if live mode has no secret configured
+  (tested) rather than silently allowing unauthenticated requests.
+- **Verified with a real HTTP smoke test, not just vitest**: started the
+  dev server and curled the full classify → slots → book → book-again →
+  pre-call chain, then confirmed the resulting rows directly in Neon via
+  `run_sql` (verdict, booking status, meet URL all correct). Asked before
+  deleting the 5 test rows this left in `production`, per the destructive-
+  SQL rule — user confirmed, rows deleted, verified back to 0.
+- **`tests/api-vaani-tools.test.ts` is self-cleaning**: it writes real
+  `calls` rows to the shared `production` Neon branch (same tradeoff as
+  Phase 3's `calcom.test.ts`), and this suite now runs on every CI push too
+  (Phase "Repo/CI wiring"). Without cleanup, every `npm test` — local or
+  CI — would permanently add 4 `test-*` rows to production forever. Added
+  an `afterAll` that deletes exactly the `call_id`s this file itself
+  created, tracked via a `testCallId()` helper. Briefly suspected this
+  wasn't working (4 rows survived a full `npm test` run) — turned out those
+  were orphans from the *first* run, before the cleanup code existed;
+  every run since correctly nets to zero, confirmed by checking row UUIDs
+  matched the stale run, not the latest one, and by rerunning with
+  temporary debug logging before removing it. Deleted the stale orphans
+  once by hand (same user-approved `test-%` deletion as above).
+- **`pre-call` built per brief section 6's optional pre-call hook**, kept
+  deliberately minimal (just "is this a returning caller + when") since
+  whether Vaani even calls it is unconfirmed — ready to extend once that's
+  known, not speculatively built out further now.
+
 ## Bug found: .env.example was never actually committed (2026-10-09)
 
 Phase 1's `.gitignore` used `.env*` to keep real secrets out of git — but
