@@ -5,6 +5,18 @@ that differs from the brief once real docs/APIs are consulted. Newest first.
 
 ## Repo/CI wiring (2026-10-09)
 
+- **Bug found and fixed via CI, not locally**: `npm run typecheck` passed
+  on this machine but failed on a clean CI checkout with
+  `Cannot find name 'LayoutProps'` in `app/layout.tsx`. Next.js 16's typed
+  routes generate `LayoutProps`/`PageProps`/etc. into `.next/types/` during
+  `next dev`, `next build`, or `next typegen` — locally that had already
+  run from earlier `npm run dev`/`build` calls, so `tsc --noEmit` alone
+  worked; a fresh clone has no `.next/` at all (correctly gitignored) and
+  nothing had generated those types first. Fixed by changing `typecheck` to
+  `next typegen && tsc --noEmit`, verified by deleting `.next` locally and
+  re-running. This is the kind of gap only a genuinely clean environment
+  (CI) catches — worth remembering before claiming "typecheck passes" means
+  anything beyond "passes on a machine with build artifacts already present."
 - **GitHub repo created**: private repo `sayandas1512/aangan-voice`, `main`
   pushed, confirmed with the user before pushing (and before authorizing
   the `workflow` OAuth scope needed to push `.github/workflows/ci.yml`).
