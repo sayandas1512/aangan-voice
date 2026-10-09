@@ -3,6 +3,51 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Ground truth received (2026-10-09)
+
+Real `knowledge/qualified.md`, `knowledge/services.md`, and a transcript
+drop (`Aangan_Sep 2026_Enquiries.pdf`) were supplied and have replaced the
+Phase 1 placeholders.
+
+- **`qualified.md`**: real rubric from Nikhil. Five criteria (real project
+  vs advice-only, in-area, realistic timeline, budget band, decision-maker
+  present), with explicit guidance not to probe on budget — only flag an
+  obvious mismatch if the caller volunteers a number. This is more nuanced
+  than the Phase 1 placeholder rubric; `agent/gemini-classify.prompt.md`
+  and the mid-call classify tool must be rebuilt against this version
+  (tracked for Phase 4).
+- **`services.md`**: real scope — residential + small commercial (up to
+  ~3,000 sq ft) across Pune city and PCMC, with a named locality list.
+  Explicitly excludes architecture/structural work, decor-only/advisory,
+  standalone furniture sourcing, standalone Vastu, and
+  restaurants/hotels/retail. Minimum lead time: 6 weeks from today;
+  minimum commercial scope implied at ~500 sq ft (confirmed by transcript
+  T18, a 180 sq ft coworking pod being declined).
+- **`pricing.md`**: received and placed at `knowledge/pricing.md`. **Not
+  read, not opened, not loaded into any context by me or by the agent** —
+  per the hard rule in the brief. It is gitignored (`npm run
+  lint:no-pricing` / CI confirms it never gets tracked).
+- **Transcripts**: the supplied PDF contained **20 real phone-call
+  transcripts** (`T01`–`T20`, labelled "Phone" in the source), not the 40
+  mentioned in the brief's placeholder count — split out individually into
+  `knowledge/transcripts/T01.md`…`T20.md`. The same PDF also had a
+  "WhatsApp threads" and a "web form submissions" section; both are **out
+  of scope** per the brief ("Scope is incoming phone calls only") and were
+  not extracted. If more phone transcripts arrive later, add them with the
+  same `T##.md` naming so `scripts/simulate-call.ts` (Phase 3) can glob
+  them.
+  - These 20 already cover most of the required unhappy-path test cases
+    from brief section 12: price pressure (T02, T13), out-of-service-area
+    (T03), advisory-only/no-execution (T04), unrealistic timeline (T07),
+    existing-client complaint/escalation (T09), budget clearly below scope
+    (T10), rented apartment edge case (T11), dropped/re-called call (T17),
+    below-minimum commercial scope (T18), and out-of-scope project type —
+    restaurant (T19). Missing from brief's 5-unhappy-path list: an abusive
+    caller and a non-English caller — neither appears in this batch, so
+    synthetic test cases will be needed for those two in Phase 3/12.
+  - T08 is a missed call with no transcript (logged metadata only) — useful
+    for after-hours/no-answer routing tests, not for classify/dialogue tests.
+
 ## Phase 1 — Scaffold (2026-10-09)
 
 - **Next.js setup**: App Router, TypeScript, ESLint, no Tailwind (dashboard
