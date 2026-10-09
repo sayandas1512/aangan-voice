@@ -51,10 +51,16 @@ beforeAll(async () => {
   }
 });
 
+// VAANI_MODE is "live" in this project's .env.local, so the tool routes
+// these tests call through require the shared secret header.
 function jsonRequest(body: unknown) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.VAANI_WEBHOOK_SECRET) {
+    headers["x-vaani-shared-secret"] = process.env.VAANI_WEBHOOK_SECRET;
+  }
   return new Request("https://example.com", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
 }

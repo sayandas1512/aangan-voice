@@ -9,6 +9,11 @@ describe("verifyToolRequest", () => {
   });
 
   it("allows all requests when VAANI_MODE is mock (the default)", async () => {
+    // This project's .env.local sets VAANI_MODE=live for the deployed app
+    // (DECISIONS.md) — clear it so this test exercises the actual default,
+    // not whatever override happens to be in the ambient environment.
+    delete process.env.VAANI_MODE;
+    delete process.env.VAANI_WEBHOOK_SECRET;
     vi.resetModules();
     const { verifyToolRequest } = await import("@/lib/api/vaani-tool-auth");
     const req = new Request("https://example.com", { method: "POST" });

@@ -15,7 +15,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const BodySchema = z.object({
   call_id: z.string().min(1),
-  caller_phone: z.string().min(1),
+  // Same WebRTC caveat as classify/route.ts: no caller-ID source, so this
+  // can only be what the caller said out loud (if anything).
+  caller_phone: z.string().min(1).optional(),
   slot_id: z.string().min(1),
   name: z.string().min(1),
   email: z.string().optional(),
@@ -29,15 +31,17 @@ export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
   const parsed = BodySchema.safeParse(json);
   if (!parsed.success) {
+    console.error("[book] invalid body from caller", JSON.stringify({ json, errors: parsed.error.flatten() }));
     return badRequest("invalid request body", parsed.error.flatten());
   }
 
   const { call_id, caller_phone, slot_id, name, email } = parsed.data;
+  const callerPhone = caller_phone ?? "unknown";
   const now = new Date();
 
   const call = await findOrCreateCallByVaaniId({
     vaaniCallId: call_id,
-    callerPhone: caller_phone,
+    callerPhone,
     startedAt: now,
     afterHours: isAfterHours(now, {
       timezone: env.TIMEZONE,
@@ -68,7 +72,7 @@ export async function POST(request: Request) {
     slotId: slot_id,
     name,
     email: emailValid ? email : undefined,
-    phone: caller_phone,
+    phone: callerPhone,
   });
 
   if (result.status === "slot_taken") {

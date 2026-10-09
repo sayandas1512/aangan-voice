@@ -7,7 +7,10 @@ describe("env", () => {
   });
 
   it("falls back to the global mode when no per-service override is set", () => {
-    expect(integrationMode("VAANI")).toBe(env.INTEGRATIONS_MODE);
+    // VAANI has a permanent live-mode override in this project's .env.local
+    // (DECISIONS.md) — GEMINI stays unset, so it's the one that actually
+    // demonstrates the fallback.
+    expect(integrationMode("GEMINI")).toBe(env.INTEGRATIONS_MODE);
   });
 
   it("defaults ACTION_LINK_SECRET and APP_BASE_URL so mock mode needs no config", () => {

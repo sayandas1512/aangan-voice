@@ -9,10 +9,17 @@ import { CALL_FIXTURES } from "./fixtures/calls";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
+// VAANI_MODE is "live" in this project's .env.local (the deployed tools
+// endpoints require the shared secret), so these test requests need the
+// same header a real Vaani tool call would send.
 function jsonRequest(body: unknown) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.VAANI_WEBHOOK_SECRET) {
+    headers["x-vaani-shared-secret"] = process.env.VAANI_WEBHOOK_SECRET;
+  }
   return new Request("https://example.com", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
   });
 }
