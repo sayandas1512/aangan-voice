@@ -3,6 +3,26 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Repo/CI wiring (2026-10-09)
+
+- **GitHub repo created**: private repo `sayandas1512/aangan-voice`, `main`
+  pushed, confirmed with the user before pushing (and before authorizing
+  the `workflow` OAuth scope needed to push `.github/workflows/ci.yml`).
+- **CI DB gap closed**: added `DATABASE_URL` as a GitHub Actions repo
+  secret (same Neon `production` connection string from `.env.local`) and
+  wired it into the `npm test` step's `env:` in `ci.yml`. The
+  `describe.skip`-when-unset guard in `tests/calcom.test.ts` (Phase 3) now
+  actually runs in CI instead of always skipping. Safe to point CI at
+  `production` directly because the only DB-touching test path
+  (`listActiveDesigners`) is read-only — the Cal.com mock's
+  book()/getSlots() never write to Neon, only to an in-memory map. Revisit
+  if a future test starts writing to the DB; a separate Neon branch for CI
+  would be the right move at that point, not reusing production.
+- **Full health check before resuming Phase 4**: confirmed `npm run build`
+  (production Next.js build) succeeds — this had not been checked since
+  scaffolding, only `dev`/`typecheck`/`lint`/`test`. All green: build,
+  typecheck, lint, test (12/12), `npm run simulate-call` (0 mismatches).
+
 ## Phase 3 — Integration interfaces, mocks, simulate-call (2026-10-09)
 
 - **Six integration modules** in `lib/integrations/` (`gemini.ts`,

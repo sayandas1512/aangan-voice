@@ -19,3 +19,5 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
