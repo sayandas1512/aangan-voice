@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { primaryIdempotencyKey, fallbackIdempotencyKey } from "@/lib/domain/idempotency";
+import { primaryIdempotencyKey, fallbackIdempotencyKey, vaaniDeliveryIdempotencyKey } from "@/lib/domain/idempotency";
+
+describe("vaaniDeliveryIdempotencyKey", () => {
+  it("is stable for the same envelope id, as it is across webhook retries", () => {
+    expect(vaaniDeliveryIdempotencyKey("evt_abc123")).toBe(vaaniDeliveryIdempotencyKey("evt_abc123"));
+  });
+
+  it("differs for different envelope ids", () => {
+    expect(vaaniDeliveryIdempotencyKey("evt_abc123")).not.toBe(vaaniDeliveryIdempotencyKey("evt_xyz789"));
+  });
+});
 
 describe("primaryIdempotencyKey", () => {
   it("is stable for the same vaani call id", () => {

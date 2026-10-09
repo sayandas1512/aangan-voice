@@ -7,10 +7,23 @@ import { integrationMode, env } from "@/lib/env";
  * general outbound "client" the way there is for Cal.com/HubSpot/etc. — this
  * module covers webhook signature verification (shared by both modes) and
  * the one outbound action we may need in live mode: pushing the agent
- * context pack. See DECISIONS.md item 1: whether Vaani supports mid-call
- * tool calls at all is the single biggest unconfirmed risk in this build;
- * everything here assumes it does, since that's the harder path to build
- * against (the fallback design is noted in DECISIONS.md, not implemented).
+ * context pack.
+ *
+ * Signature scheme confirmed against the real docs (vaanilabs.in/docs/api/webhooks,
+ * reviewed 2026-10-09 — see DECISIONS.md): each delivery carries
+ * `X-VaaniVoice-Signature: sha256=<hex>`, an HMAC-SHA256 of the raw body
+ * keyed with the webhook secret (`vv_whk_…`, shown once at creation).
+ * Dedup on the envelope's `id` (`evt_…`) or the `X-VaaniVoice-Delivery`
+ * header — both are reused across retries.
+ *
+ * Still unconfirmed: whether a flow can call out to our API *mid-call*
+ * (brief [ASK] item 1). The public WebSocket frame protocol
+ * (vaanilabs.in/docs/api/textvoice) only documents transcript/audio/end
+ * frames — no tool-call frame type. That logic likely lives in the
+ * dashboard's visual "Conversation flow builder," which needs an account
+ * to inspect. Still building against the assumption that it supports
+ * mid-call tool calls, since that's the harder path — just no longer
+ * guessing blind about it.
  */
 
 export interface VaaniCallEndedPayload {
@@ -37,9 +50,15 @@ const mockClient: VaaniClient = {
   },
 };
 
+/**
+ * Matches the real header format exactly: "sha256=" + lowercase hex HMAC,
+ * compared against "sha256=" + our own digest — not the bare hex. Getting
+ * this prefix wrong means every verification silently fails (the docs call
+ * this out explicitly as the most common integration mistake).
+ */
 function verifyHmacSignature(rawBody: string, signatureHeader: string | null, secret: string): boolean {
   if (!signatureHeader) return false;
-  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+  const expected = "sha256=" + createHmac("sha256", secret).update(rawBody).digest("hex");
   const expectedBuf = Buffer.from(expected, "utf8");
   const actualBuf = Buffer.from(signatureHeader, "utf8");
   if (expectedBuf.length !== actualBuf.length) return false;

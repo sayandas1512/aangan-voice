@@ -3,6 +3,88 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Bug found: .env.example was never actually committed (2026-10-09)
+
+Phase 1's `.gitignore` used `.env*` to keep real secrets out of git — but
+that glob also matched `.env.example`, which the brief explicitly lists as
+a committed file (section 5 repo layout, section 11 contents) and which
+`README.md`'s own setup instructions tell the reader to `cp .env.example
+.env.local`. It silently existed on disk through every phase so `cp` kept
+working locally, but was never once in any commit — `git ls-files` only
+showed `.env.local` as the untracked, correctly-ignored real-secrets file.
+Nobody writing or reviewing `.gitignore` entries caught that the glob was
+too broad in the other direction. Fixed with `!.env.example` after the
+`.env*` line; confirmed with `git check-ignore` before and after, and
+`git ls-files` after committing to verify it actually landed this time.
+
+## Vaani Labs real docs reviewed (2026-10-09)
+
+Browsed vaanilabs.in and its public docs directly (not just search
+snippets) to replace guesses with sourced facts. Updates [ASK] item 1 from
+"fully unconfirmed" to "partially confirmed" — see below for what's still
+open.
+
+- **Confirmed: this is the right Vaani Labs.** Mumbai-based (BKC), built
+  specifically for Indian businesses, phone/WhatsApp/browser voice agents,
+  explicit lending/healthcare/real-estate/D2C use cases, a Pune dental
+  group testimonial. Matches the brief's description exactly.
+- **Languages — confirmed, and broader than the brief assumed.** The
+  platform supports 40+ languages and accents platform-wide (landing page:
+  "Hindi, English, Tamil and 40+ more — switching naturally, whatever the
+  caller uses"). This is **not a per-project limit** — which languages are
+  *active* for this studio's agent is a dashboard/flow-builder config
+  choice, not a code constraint. Updated `agent/context-pack.md` to default
+  to **English, Hindi, Marathi** (Marathi added because this studio is in
+  Pune/Maharashtra — a caller defaulting to Marathi is a realistic case the
+  brief's own English/Hindi-only framing missed) and documented that more
+  of the 40+ can be enabled on request — tracked as [ASK] item 4, not
+  blocking.
+- **Confirmed: webhook signature scheme**, from
+  `vaanilabs.in/docs/api/webhooks`. Real shape, which my Phase 4
+  implementation had guessed wrong:
+  - Header is `X-VaaniVoice-Signature: sha256=<hex>` — **the `sha256=`
+    prefix is part of the literal header value**, not a separate field.
+    `lib/integrations/vaani.ts`'s `verifyHmacSignature` originally compared
+    the bare hex digest against the header and would have silently failed
+    every real verification. Fixed to prepend `sha256=` before comparing.
+  - Webhook secret format is `vv_whk_…`, shown once at creation time via a
+    dashboard-session-authenticated `POST /api/webhooks` call (not the
+    public `vv_live_…` API key).
+  - Event catalog includes `call.completed` and `call.failed` (not
+    `call-ended` as our folder name `app/api/vaani/webhook/call-ended/`
+    assumed — keeping that as our route's name is fine, it's our path, not
+    theirs, but the code must match on the real event `type` field).
+  - Retries use the same envelope `id` (`evt_…`); the brief's dedup
+    requirement maps directly onto this. Added
+    `vaaniDeliveryIdempotencyKey()` to `lib/domain/idempotency.ts`
+    alongside the existing call-id and phone-window keys — check delivery
+    id first (catches literal retries), then call id (catches Vaani
+    re-sending the same call under a new delivery).
+- **Confirmed: a real per-minute voice rate exists**, resolving [ASK] item
+  6 with a sourced default rather than leaving it at 0.
+  `vaanilabs.in/docs/api/billing`: textvoice/voicebot bills 4 paise/sec,
+  rounded up to whole billable minutes = **₹2.40/min**. Set as the new
+  `VOICE_COST_INR_PER_MIN` default in `.env.example`/`.env.local`. Caveat
+  recorded in the env comment: this is Vaani's own session rate: if the
+  phone number is a "bring your own Twilio" setup (the quickstart
+  mentions "Configure your Twilio number"), Twilio's separate per-minute
+  PSTN charge would stack on top — unconfirmed whether this studio's
+  number will be Vaani-provided or BYO Twilio.
+- **Still unconfirmed: mid-call tool calling** (the actual biggest risk,
+  [ASK] item 1). The public WebSocket frame protocol
+  (`vaanilabs.in/docs/api/textvoice`) only documents
+  `transcript_partial`/`transcript_final`/`agent_speech`/audio/`end` frames
+  server→client — no tool-call or function-call frame type is shown. The
+  conversation branching logic (`flow_id`, built in a dashboard "visual
+  flow builder" per the marketing copy) is where mid-call external calls
+  would plausibly be configured, but inspecting it needs an actual account
+  ("Create an account and get approved" is the first quickstart step) — not
+  something reachable from public docs alone. **Still building against the
+  assumption that it works**, per the original reasoning (harder path,
+  more complete if true), but this is no longer a blind guess — it's an
+  identified gap with a concrete next step: sign up for an account and
+  check the flow builder before Phase 9's live Vaani wiring.
+
 ## Phase 4 — Domain logic (2026-10-09)
 
 - **Six domain modules** in `lib/domain/`: `price-guard.ts`, `qualify.ts`,
