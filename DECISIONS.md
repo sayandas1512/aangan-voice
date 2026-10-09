@@ -3,6 +3,88 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 8 — Founder dashboard (2026-10-09)
+
+- **Password gate built, but off by default** — a user-directed override of
+  brief section 10's "simple password gate." This is an assignment
+  submission, and the reviewer needs to open `/dashboard` directly with no
+  login. Rather than deleting the auth work, added
+  `DASHBOARD_REQUIRE_PASSWORD` (default `false`) gating
+  `isDashboardAuthed()`; the login page, signed-cookie session
+  (`lib/domain/dashboard-session.ts`), and rate-limited login route
+  (`app/api/dashboard/login/route.ts`, 5 attempts / 15 min via the events
+  table) are all fully functional and ready to flip on for a real
+  deployment.
+- **Metrics computed in JS after a small fetch, not raw SQL**: at this
+  studio's real scale (~200 calls/month), pulling all rows for a metric
+  and computing percentiles/aggregates in application code
+  (`lib/domain/dashboard-metrics.ts`) is simpler and more testable than
+  `percentile_cont` queries through the neon-http driver, whose raw-SQL
+  `.execute()` return shape I hadn't verified. Would reconsider at a much
+  higher call volume.
+- **Gemini cost is honestly shown as untracked, not estimated**: nothing
+  in the pipeline records Gemini token usage (`classifications` stores
+  `latencyMs`, not tokens), so `GEMINI_COST_INR_PER_1K_TOKENS` has no real
+  data to multiply against. The cost panel computes voice cost from real
+  call `duration_sec` (this part is solid) and labels Gemini cost as not
+  tracked, rather than inventing a number from an assumed average token
+  count. Flagged as a gap, not silently zeroed.
+- **Next.js 16 Cache Components bug, found via `npm run build`, not
+  `dev`**: `export const dynamic = "force-dynamic"` (the Next ≤15 way to
+  mark a route as always server-rendered) is rejected outright under
+  `cacheComponents` — `next dev` never surfaced this, only `next build`
+  did, as an explicit built-in error naming the exact fix. The real
+  replacement is `export const instant = false`, confirmed by reading
+  `node_modules/next/dist/docs/01-app/.../instant.md` rather than guessing
+  from the error text alone (the error only said what to remove, not
+  what — if anything — to add in its place).
+- **Real accessibility/contrast bug caught by actually looking at it in
+  the browser, not just curling it**: the login heading and body text were
+  rendering near-invisible (light grey on white). Root cause:
+  `app/globals.css` sets `body { color: var(--foreground) }`, which
+  resolves to a near-white value under `prefers-color-scheme: dark`
+  (this machine's browser was in dark mode); `.loginWrap` never set its
+  own `color`, so it inherited the near-white value onto a white card.
+  `.dashShell` had the override, `.loginWrap` didn't — simple omission.
+  Also found the password input rendering with native dark-OS
+  chrome (black background) because `globals.css` sets `color-scheme: dark`
+  globally — added `color-scheme: light` to both dashboard containers so
+  native form controls render light regardless of OS theme, since this
+  dashboard doesn't have its own dark mode. Neither bug was visible from
+  `curl`; both only showed up once the page was actually opened and looked
+  at — reinforces "test it in a browser," not just "the route returns 200."
+- **Found and fixed a real test-hygiene gap while smoke-testing**: the
+  dashboard's own "Price guard hits" tile read 75 — `tests/price-guard.test.ts`,
+  `tests/note.test.ts`, and `tests/summary.test.ts` each deliberately
+  trigger a real `price_guard_violation` row in the shared production
+  `events` table to test the guard's fallback path, and none of them had
+  ever cleaned it up (unlike the `calls`/`designers` self-cleaning pattern
+  established since Phase 3). Same gap existed for
+  `tests/call-ended.test.ts`'s `classification_missing_at_call_end`
+  events. All four files now delete their own event rows in `afterAll`,
+  scoped by exact `type` match + the test run's time window (not a blanket
+  time-window delete, since parallel test files can log events in the same
+  second). Deleted the 75+11+1 stray rows that had accumulated across this
+  session's many manual test runs and CI runs.
+- **Kept the dashboard's demo data on request**: generated 4 real calls
+  through the live mock pipeline while smoke-testing (3 yes/1 no, 3
+  bookings, 1 held, 1 won ₹10,50,000) so every panel has something to show
+  instead of an all-zero empty state. Asked before keeping vs. clearing it
+  — user chose to keep it; cleaned up the `+smoke`-tagged designer email
+  addresses used during testing to plausible-looking placeholders instead.
+- **Verified with a real browser smoke test**, not just the build: logged
+  in (both with and without the password gate), viewed the dashboard with
+  real seeded data (every tile showing correct computed numbers, cross-
+  checked against what was actually seeded), opened a "no" call's detail
+  page and a "won" call's detail page, and checked the mobile viewport
+  (375px) — cards reflow to a 2-column grid, nothing overflows.
+- **Known gap, not blocking**: there's no automated test exercising the
+  real HTTP webhook route (`app/api/vaani/webhook/call-ended/route.ts`)
+  end to end — `verifyHmacSignature` is unit-tested and `processCallEnded`
+  is integration-tested, but the two aren't tested wired together through
+  the actual route handler. Worth adding before live Vaani rollout
+  (Phase 9), not before.
+
 ## CI-only test timeout, found after the Phase 7 push (2026-10-09)
 
 The Phase 7 push went green locally (97/97, every DB-backed test under

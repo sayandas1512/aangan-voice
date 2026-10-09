@@ -32,6 +32,14 @@ export const envSchema = z.object({
   RESEND_FROM: z.string().optional(),
 
   DASHBOARD_PASSWORD: z.string().default("changeme"),
+  // Off by default: this build is for assignment review, where the
+  // reviewer should be able to open /dashboard directly with no password.
+  // The gate itself (login page, signed session cookie, rate limiting) is
+  // still fully built — flip this to "true" for a real deployment.
+  DASHBOARD_REQUIRE_PASSWORD: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 
   // Vercel Cron sends "Authorization: Bearer <CRON_SECRET>" automatically
   // when this is set as a project env var; checked by /api/cron/retry so

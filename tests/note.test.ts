@@ -1,5 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterAll } from "vitest";
+import { eq, and, gte, lte } from "drizzle-orm";
 import { buildDesignerNote, type DesignerNoteInput } from "@/lib/domain/note";
+
+// The last test below triggers a real price_guard_violation event against
+// the shared production events table. Scope cleanup to this run's window
+// rather than tracking ids (see tests/price-guard.test.ts for the same
+// pattern) so any real violation from actual pipeline usage is untouched.
+const testRunStartedAt = new Date();
+const hasDb = Boolean(process.env.DATABASE_URL);
+
+afterAll(async () => {
+  if (!hasDb) return;
+  const { getDb } = await import("@/lib/db/client");
+  const { events } = await import("@/lib/db/schema");
+  await getDb()
+    .delete(events)
+    .where(and(eq(events.type, "price_guard_violation"), gte(events.at, testRunStartedAt), lte(events.at, new Date())));
+});
 
 function baseInput(overrides: Partial<DesignerNoteInput> = {}): DesignerNoteInput {
   return {
@@ -65,7 +82,6 @@ describe("buildDesignerNote", () => {
     expect(note).toContain("Open questions: none");
   });
 
-  const hasDb = Boolean(process.env.DATABASE_URL);
   it.skipIf(!hasDb)("falls back to a safe note if the reason/summary text accidentally contains price language", async () => {
     const note = await buildDesignerNote(
       baseInput({ reason: "caller said their budget is about 10 lakh and that feels affordable" })

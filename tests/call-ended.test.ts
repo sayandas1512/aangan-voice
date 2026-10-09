@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and, gte, lte } from "drizzle-orm";
 import { POST as classifyRoute } from "@/app/api/vaani/tools/classify/route";
 import { POST as slotsRoute } from "@/app/api/vaani/tools/slots/route";
 import { POST as bookRoute } from "@/app/api/vaani/tools/book/route";
@@ -9,6 +9,24 @@ import { getCallByVaaniCallId, getNotificationsForCall, getHubspotSyncForCall, l
 import { CALL_FIXTURES } from "./fixtures/calls";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
+
+// processCallEnded logs real rows to the shared production events table
+// (classification_missing_at_call_end, no_designer_email,
+// yes_or_maybe_without_booking, call_failed). The vaani-delivery:<id>
+// dedup event is logged by the HTTP webhook route, not processCallEnded
+// itself — this file calls processCallEnded directly, so it never
+// generates one. Deleting the `calls` rows in afterAll below does NOT
+// cascade to events — it's a generic log table with no FK. Cleaned up by
+// exact type match + this run's time window, rather than a blanket
+// time-window delete, since other test files can log events in the same
+// second when the suite runs with parallelism.
+const testRunStartedAt = new Date();
+const CALL_ENDED_EVENT_TYPES = [
+  "classification_missing_at_call_end",
+  "no_designer_email",
+  "yes_or_maybe_without_booking",
+  "call_failed",
+];
 
 // The seeded placeholder designers (scripts/seed.ts) have no email — a
 // real deployment fills it in once the founder sets it up. The Cal.com
@@ -51,13 +69,16 @@ function testCallId(): string {
 afterAll(async () => {
   if (!hasDb) return;
   const { getDb } = await import("@/lib/db/client");
-  const { calls, designers: designersTable } = await import("@/lib/db/schema");
+  const { calls, designers: designersTable, events } = await import("@/lib/db/schema");
   if (createdCallIds.length > 0) {
     await getDb().delete(calls).where(inArray(calls.vaaniCallId, createdCallIds));
   }
   for (const d of patchedDesigners) {
     await getDb().update(designersTable).set({ email: d.originalEmail }).where(eq(designersTable.id, d.id));
   }
+  await getDb()
+    .delete(events)
+    .where(and(gte(events.at, testRunStartedAt), lte(events.at, new Date()), inArray(events.type, CALL_ENDED_EVENT_TYPES)));
 });
 
 /** Drives a call through classify + slots + book, as a real call would before ending. */

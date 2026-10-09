@@ -1,4 +1,4 @@
-import { eq, desc, and, lte } from "drizzle-orm";
+import { eq, desc, and, lte, gte } from "drizzle-orm";
 import { getDb } from "./client";
 import {
   designers,
@@ -358,4 +358,13 @@ export function logEvent(type: string, payload?: unknown) {
 export async function hasEventType(type: string): Promise<boolean> {
   const rows = await getDb().select({ id: events.id }).from(events).where(eq(events.type, type)).limit(1);
   return rows.length > 0;
+}
+
+/** Used for simple rate limiting (e.g. dashboard login attempts) — count events of a type logged since a given time. */
+export async function countEventsOfTypeSince(type: string, since: Date): Promise<number> {
+  const rows = await getDb()
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.type, type), gte(events.at, since)));
+  return rows.length;
 }

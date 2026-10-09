@@ -1,0 +1,266 @@
+:root {
+  --dash-bg: #f7f8fa;
+  --dash-surface: #ffffff;
+  --dash-border: #e2e5ea;
+  --dash-text: #1a1d24;
+  --dash-muted: #5b6270;
+  --dash-accent: #2563eb;
+  --dash-good: #16803c;
+  --dash-warn: #b45309;
+  --dash-bad: #b91c1c;
+}
+
+.dashShell,
+.loginWrap {
+  /* The app shell's globals.css sets `color-scheme: dark` under
+     prefers-color-scheme — without overriding it here, the browser
+     renders native form controls (password input, etc.) with dark
+     backgrounds regardless of this stylesheet's own light colors. */
+  color-scheme: light;
+}
+
+.dashShell {
+  min-height: 100vh;
+  background: var(--dash-bg);
+  color: var(--dash-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dashHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: var(--dash-surface);
+  border-bottom: 1px solid var(--dash-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.dashHeader h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.dashMain {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px 60px;
+}
+
+.section {
+  margin-bottom: 32px;
+}
+
+.section h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dash-muted);
+  margin: 0 0 12px;
+}
+
+.tileGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.tile .label {
+  font-size: 12px;
+  color: var(--dash-muted);
+  margin-bottom: 4px;
+}
+
+.tile .value {
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.tile .sub {
+  font-size: 11px;
+  color: var(--dash-muted);
+  margin-top: 2px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badgeGood {
+  background: #e7f6ec;
+  color: var(--dash-good);
+}
+
+.badgeWarn {
+  background: #fdf1e0;
+  color: var(--dash-warn);
+}
+
+.badgeBad {
+  background: #fbe9e9;
+  color: var(--dash-bad);
+}
+
+table.dashTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+table.dashTable th,
+table.dashTable td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dash-border);
+}
+
+table.dashTable th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dash-muted);
+  background: #fafbfc;
+}
+
+table.dashTable tr:last-child td {
+  border-bottom: none;
+}
+
+table.dashTable a {
+  color: var(--dash-accent);
+  text-decoration: none;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--dash-muted);
+  margin-top: 8px;
+}
+
+.loginWrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dash-bg);
+  color: var(--dash-text);
+  padding: 16px;
+}
+
+.loginCard {
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 340px;
+}
+
+.loginCard h1 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.loginCard p {
+  font-size: 13px;
+  color: var(--dash-muted);
+  margin: 0 0 20px;
+}
+
+.loginCard input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 15px;
+  padding: 10px 12px;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.loginCard button {
+  width: 100%;
+  font-size: 15px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--dash-accent);
+  color: white;
+  cursor: pointer;
+}
+
+.loginCard button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.loginError {
+  color: var(--dash-bad);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.logoutButton {
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  background: var(--dash-surface);
+  cursor: pointer;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.detailBlock {
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.detailBlock h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--dash-muted);
+  margin: 0 0 8px;
+}
+
+.transcript {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--dash-surface);
+  border: 1px solid var(--dash-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+@media (max-width: 480px) {
+  .dashMain {
+    padding: 14px 10px 40px;
+  }
+  table.dashTable {
+    font-size: 12px;
+  }
+}

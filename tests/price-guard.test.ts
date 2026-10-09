@@ -1,5 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterAll } from "vitest";
+import { lte, eq, and, gte } from "drizzle-orm";
 import { checkPriceGuard, enforcePriceGuard } from "@/lib/domain/price-guard";
+
+// enforcePriceGuard logs a real price_guard_violation row to the shared
+// production events table on a hit. Scope cleanup to events created
+// during this run (at >= testRunStartedAt) rather than tracking ids, so a
+// real violation logged by actual pipeline usage is never touched.
+const testRunStartedAt = new Date();
+const hasDb = Boolean(process.env.DATABASE_URL);
+
+afterAll(async () => {
+  if (!hasDb) return;
+  const { getDb } = await import("@/lib/db/client");
+  const { events } = await import("@/lib/db/schema");
+  await getDb()
+    .delete(events)
+    .where(and(eq(events.type, "price_guard_violation"), gte(events.at, testRunStartedAt), lte(events.at, new Date())));
+});
 
 describe("checkPriceGuard", () => {
   it("passes clean text with no price language", () => {
@@ -43,7 +60,6 @@ describe("enforcePriceGuard", () => {
     expect(result).toBe(text);
   });
 
-  const hasDb = Boolean(process.env.DATABASE_URL);
   it.skipIf(!hasDb)("returns the fallback and logs an event when text is flagged", async () => {
     const result = await enforcePriceGuard("that'll be around 10 lakh", "Let's discuss specifics at the consultation.", {
       source: "test",
