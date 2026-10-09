@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const envSchema = z.object({
+export const envSchema = z.object({
   INTEGRATIONS_MODE: z.enum(["mock", "live"]).default("mock"),
   VAANI_MODE: z.enum(["mock", "live"]).optional(),
   GEMINI_MODE: z.enum(["mock", "live"]).optional(),
@@ -55,7 +55,12 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 function loadEnv(): Env {
-  const parsed = envSchema.safeParse(process.env);
+  // Blank-but-present vars (e.g. "VAANI_MODE=" in .env.local) should behave
+  // like unset ones, not fail enum/number validation.
+  const cleaned = Object.fromEntries(
+    Object.entries(process.env).filter(([, v]) => v !== "")
+  );
+  const parsed = envSchema.safeParse(cleaned);
   if (!parsed.success) {
     console.error("Invalid environment configuration:", parsed.error.flatten().fieldErrors);
     throw new Error("Invalid environment configuration. See logs above.");

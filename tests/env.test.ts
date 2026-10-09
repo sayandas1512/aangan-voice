@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { env, integrationMode } from "@/lib/env";
+import { env, envSchema, integrationMode } from "@/lib/env";
 
 describe("env", () => {
   it("defaults INTEGRATIONS_MODE to mock", () => {
@@ -12,5 +12,13 @@ describe("env", () => {
 
   it("defaults ENABLE_RESEND_FALLBACK to false", () => {
     expect(env.ENABLE_RESEND_FALLBACK).toBe(false);
+  });
+
+  it("rejects a blank-but-present *_MODE var directly against the schema", () => {
+    // Documents why lib/env.ts strips empty strings before parsing: a bare
+    // enum().optional() field treats "" as an invalid enum value, not as
+    // unset — .env.local ships unset overrides as e.g. "VAANI_MODE=".
+    const result = envSchema.safeParse({ ...process.env, VAANI_MODE: "" });
+    expect(result.success).toBe(false);
   });
 });

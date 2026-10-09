@@ -3,6 +3,50 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 2 — Database (2026-10-09)
+
+- **Neon project reachable**: `empty-meadow-33722721` (name `aangan-voice`,
+  region `aws-ap-southeast-1`) exists and is accessible via the Neon MCP
+  tools, with a `production` branch (`br-hidden-frog-b3gdb4c7`) already set
+  as default — matches the brief's section 11 note exactly.
+- **Schema**: all 11 tables from brief section 9 implemented in
+  `lib/db/schema.ts` (Drizzle), covering `designers`, `calls`, `answers`,
+  `classifications`, `bookings`, `notifications`, `hubspot_sync`,
+  `outcomes`, `cost_events`, `jobs`, `events`. UUID primary keys
+  (`gen_random_uuid()`), `created_at` timestamptz on every table, indexes
+  on `vaani_call_id` (unique), `caller_phone`, `started_at` per the brief,
+  plus FK cascades from child tables back to `calls`/`bookings` so a call
+  can be deleted cleanly in dev/test without orphaning rows.
+- **Migration applied to `production`** via the Neon MCP
+  prepare/test/complete flow (tested on a temp branch first, verified all
+  11 tables landed, then applied) — not run blind. Migration file:
+  `lib/db/migrations/0000_aberrant_surge.sql`.
+- **Drizzle config split**: `drizzle.config.ts` (real config: schema path,
+  migrations dir, postgres dialect, `DATABASE_URL` credential) is separate
+  from `neon.ts`, which stays exactly `defineConfig({})` as the brief
+  requires. `neon.ts` is excluded from `tsc --noEmit` in `tsconfig.json`
+  since an empty config object doesn't satisfy drizzle-kit's `Config` type
+  — that's expected, since the brief says not to change the file's content.
+- **Env bug found and fixed**: `lib/env.ts`'s per-service `*_MODE` fields
+  (`z.enum([...]).optional()`) rejected `.env.local`'s own
+  `.env.example`-derived convention of shipping unset overrides as
+  `VAANI_MODE=` (present, empty string) rather than omitted entirely —
+  zod's `.optional()` only accepts `undefined`, not `""`. Fixed by
+  stripping empty-string env vars before `safeParse` in `loadEnv()`, with
+  a regression test in `tests/env.test.ts` asserting the schema rejects
+  `""` directly (documenting why the strip step exists).
+- **`.env.local`** created locally (gitignored) with the real Neon
+  `DATABASE_URL` from `get_connection_string`. Not committed; `DATABASE_URL`
+  value must be quoted in `.env.local` because of the `&` in the query
+  string — noted here since it broke a naive `source .env.local` the first
+  time.
+- **Seeded 2 placeholder designers** (`Asha`, `Rohan`, placeholder
+  `calcom_host_id`s, no Telegram chat ID yet) via `npm run seed` against
+  the live `production` branch, confirmed with a direct `run_sql` read —
+  verifies schema, client, and queries all work end-to-end against real
+  Neon, not just typecheck. Replace with real designers once given
+  (DECISIONS.md "Open [ASK] items", item 7).
+
 ## Ground truth received (2026-10-09)
 
 Real `knowledge/qualified.md`, `knowledge/services.md`, and a transcript
