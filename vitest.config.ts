@@ -40,6 +40,12 @@ export default defineConfig(() => {
     test: {
       environment: "node",
       include: ["tests/**/*.test.ts"],
+      // Several integration tests (call-ended.test.ts, api-*.test.ts) make
+      // many sequential real round trips to Neon through the route
+      // handlers they exercise. Vitest's 5s default was fine against local
+      // network latency but timed out in CI — not a code bug, just a
+      // tighter default than this suite's slowest real DB paths need.
+      testTimeout: 20000,
     },
   };
 });

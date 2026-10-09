@@ -3,6 +3,23 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## CI-only test timeout, found after the Phase 7 push (2026-10-09)
+
+The Phase 7 push went green locally (97/97, every DB-backed test under
+~2.5s) but failed CI: `tests/call-ended.test.ts`'s two heaviest tests hit
+vitest's default 5000ms timeout there specifically. Not a code bug —
+GitHub Actions' network path to Neon is evidently slower than this
+machine's, and those two tests make several sequential real round trips
+(classify → slots → book → processCallEnded's own handful of queries) that
+added up past 5s only under CI's latency. Fixed by setting
+`testTimeout: 20000` globally in `vitest.config.ts` rather than special-
+casing those two tests — other integration tests could hit the same wall
+under slightly worse network conditions. Confirmed the DB was still clean
+(0 calls, 0 designer emails) after the failed CI run — its `afterAll`
+hooks never got to run once vitest killed the timed-out tests, so this was
+worth checking by hand rather than assuming the push's local cleanup
+guarantees still held.
+
 ## Phase 7 — Telegram → email pivot, designer outcome actions (2026-10-09)
 
 **User-directed architecture change**, not a default I chose: mid-build on
