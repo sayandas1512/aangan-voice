@@ -3,6 +3,68 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 3 — Integration interfaces, mocks, simulate-call (2026-10-09)
+
+- **Six integration modules** in `lib/integrations/` (`gemini.ts`,
+  `calcom.ts`, `telegram.ts`, `hubspot.ts`, `resend.ts`, `vaani.ts`), each
+  exporting a typed client interface plus a `mock`/`live` implementation
+  selected by `integrationMode()` from `lib/env.ts`. No service-specific
+  code anywhere else in the app talks to these APIs directly.
+- **`vaani.ts` is intentionally thin**: Vaani calls *us* (mid-call tool
+  endpoints, call-ended webhook) rather than the other way around, so there
+  is no general outbound "client" the way there is for the other five. This
+  module only covers HMAC webhook-signature verification and a
+  `pushAgentConfig` stub that **throws in live mode** — the real Vaani
+  agent-config API shape is unconfirmed (still [ASK] item 1), so guessing
+  at it felt worse than failing loudly with a pointer to paste
+  `agent/context-pack.md` into the Vaani dashboard manually until Phase 9.
+- **Gemini mock classify is a deliberate approximation**, not the real
+  rubric: a small rule-based heuristic (service-area list, 6-week minimum
+  lead time, advisory-only keyword match, a crude lakh-threshold budget
+  check) that mirrors `knowledge/qualified.md`'s five criteria closely
+  enough to produce plausible, testable verdicts with no API key. The real
+  rubric text only goes to the live Gemini call (`buildClassifyPrompt`);
+  Phase 4's `agent/gemini-classify.prompt.md` is the authoritative version.
+  Do not tighten the mock heuristic to match edge cases in the brief's
+  remaining 15 transcripts — it only needs to stay plausible, not correct,
+  since live mode is what actually matters.
+- **Cal.com live client built against the documented v2 shape** (`/v2/slots`,
+  `/v2/bookings`, Google Meet location type) without having fetched Cal.com's
+  actual docs yet — flagged here so Phase 9's live smoke test knows to
+  verify request/response shapes before trusting this, not just the API key.
+- **Bug found and fixed**: the Cal.com mock's first cut encoded the slot's
+  ISO timestamp directly into the slot id string and tried to regex it back
+  out in `book()`. Since an ISO timestamp itself contains hyphens
+  (`2026-10-12T05:30:00.000Z`), the regex silently matched the wrong thing
+  and `book()` returned the *current* time instead of the slot's start
+  time. Fixed by keeping a `slotId -> {startIso, designerId}` map populated
+  by `getSlots()` instead of parsing the id. Caught by running
+  `scripts/simulate-call.ts` against real fixtures, not by typecheck/lint
+  — a reminder that integration mocks need to actually be exercised, not
+  just compiled.
+- **`scripts/simulate-call.ts`** replays 5 hand-picked fixtures (from
+  `tests/fixtures/calls.ts`, derived from real `knowledge/transcripts/`
+  calls: T01 yes, T03 out-of-area, T04 advisory-only, T07 rushed timeline,
+  T10 budget mismatch) through classify + getSlots in parallel, then
+  book/telegram/hubspot for yes/maybe. **Scope note**: this calls the
+  integration clients directly, not the Next.js API routes — those
+  (`app/api/vaani/tools/*`, `app/api/vaani/webhook/call-ended`) don't exist
+  until Phases 5–6. Once they do, extend or parallel this script to POST to
+  them instead, per brief section 12's actual wording ("replays a
+  transcript through the tool endpoints").
+- **Test coverage added early**: `tests/gemini.test.ts` and
+  `tests/calcom.test.ts` run the same 5 fixtures and the slot_taken path
+  through vitest, not just the manual script. `tests/calcom.test.ts` needs
+  a real `DATABASE_URL` (it calls `listActiveDesigners()`), which
+  `vitest.config.ts` now loads from `.env.local` via a small hand-rolled
+  parser (no `dotenv` dependency added — logged here per the "no deps
+  beyond the stack without recording why" rule, though strictly this just
+  avoids adding one, not the reverse). CI has no DB secret configured, so
+  these tests use `describe.skip` when `DATABASE_URL` is unset rather than
+  fail the pipeline — tracked as a gap: CI currently can't catch a
+  regression in the DB-touching integration tests. Revisit once a CI-scoped
+  Neon branch or secret is set up.
+
 ## Phase 2 — Database (2026-10-09)
 
 - **Neon project reachable**: `empty-meadow-33722721` (name `aangan-voice`,
