@@ -13,10 +13,14 @@ import {
   type Outcome,
 } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { checkPriceGuard } from "@/lib/domain/price-guard";
 import { computeCallCost, costPerUnit, estimatedPipelineValue, actualWonValue } from "@/lib/domain/cost";
+import { firstSentence, followupReason, type FollowupOwner } from "@/lib/domain/followup";
 import {
   dayKey,
   firstCallerLine,
+  parseTranscript,
+  callerAskedForPrice,
   formatDate,
   hubspotDealUrl,
   projectLine,
@@ -275,6 +279,9 @@ export type AttentionKind = "system" | "followup" | "outcome";
 export interface AttentionItem {
   key: string;
   kind: AttentionKind;
+  /** Who should act. The founder isn't on this list — they're watching it. */
+  owner: FollowupOwner;
+  ownerName?: string;
   callId: string;
   title: string;
   detail: string;
@@ -290,11 +297,6 @@ function displayName(name: string | undefined, phone: string): string {
   return phone && phone !== "unknown" ? phone : "Unknown caller";
 }
 
-function firstSentence(text: string, max = 150): string {
-  const first = text.split(/(?<=[.!?])\s/)[0] ?? text;
-  return first.length > max ? `${first.slice(0, max - 1).trimEnd()}…` : first;
-}
-
 export function deriveAttention(snap: Snapshot, now: Date = new Date()): AttentionItem[] {
   const idx = buildIndexes(snap);
   const items: AttentionItem[] = [];
@@ -303,6 +305,7 @@ export function deriveAttention(snap: Snapshot, now: Date = new Date()): Attenti
     const name = idx.answersByCall.get(call.id)?.name;
     const title = displayName(name, call.callerPhone);
     const booking = idx.bookingByCall.get(call.id);
+    const designerName = booking?.designerId ? idx.designerById.get(booking.designerId)?.name : undefined;
     const bookingOutcomes = booking ? (idx.outcomesByBooking.get(booking.id) ?? []) : [];
 
     // 1. Integrations that didn't do their job.
@@ -311,6 +314,7 @@ export function deriveAttention(snap: Snapshot, now: Date = new Date()): Attenti
       items.push({
         key: `hubspot-failed-${call.id}`,
         kind: "system",
+        owner: "system",
         callId: call.id,
         title,
         detail: `HubSpot sync failed after ${hubspot.attempts} attempts${hubspot.lastError ? ` — ${firstSentence(hubspot.lastError, 90)}` : ""}`,
@@ -325,6 +329,7 @@ export function deriveAttention(snap: Snapshot, now: Date = new Date()): Attenti
       items.push({
         key: `email-failed-${call.id}`,
         kind: "system",
+        owner: "system",
         callId: call.id,
         title,
         detail: `Designer email didn't send${failedEmail.error ? ` — ${firstSentence(failedEmail.error, 90)}` : ""}`,
@@ -338,15 +343,12 @@ export function deriveAttention(snap: Snapshot, now: Date = new Date()): Attenti
     // 2. Calls that need a human to pick up the phone.
     if (isFollowupOpen(call, snap.calls, bookingOutcomes.length > 0)) {
       const classification = idx.classificationByCall.get(call.id);
-      let detail: string;
-      if (call.status === "missed") detail = "Missed call — nobody left a message. Worth calling back.";
-      else if (call.status === "dropped") detail = "Call dropped mid-conversation.";
-      else if (!classification) detail = "Needs a person — the assistant couldn't qualify this call.";
-      else detail = firstSentence(classification.reason);
+      const detail = followupReason({ status: call.status, classificationReason: classification?.reason });
 
       items.push({
         key: `followup-${call.id}`,
         kind: "followup",
+        owner: "front_desk",
         callId: call.id,
         title,
         detail,
@@ -369,12 +371,14 @@ export function deriveAttention(snap: Snapshot, now: Date = new Date()): Attenti
       items.push({
         key: `outcome-${booking.id}`,
         kind: "outcome",
+        owner: "designer",
+        ownerName: designerName,
         callId: call.id,
         title,
-        detail: `Consultation was ${formatDate(booking.startAt)} — how did it go?`,
+        detail: `${designerName ?? "The designer"} hasn't reported how the ${formatDate(booking.startAt)} consultation went.`,
         when: booking.startAt,
         tone: "info",
-        actionLabel: "Log outcome",
+        actionLabel: "Open",
         resolvable: false,
       });
     }
@@ -392,8 +396,21 @@ export function deriveAttention(snap: Snapshot, now: Date = new Date()): Attenti
 // Headline metrics (range-aware)
 // ---------------------------------------------------------------------------
 export interface Metrics {
-  calls: { total: number; afterHours: number; afterHoursShare: number | null; missedOrDropped: number };
-  speed: { emailP50: number | null; emailP95: number | null; bookP50: number | null };
+  calls: {
+    total: number;
+    afterHours: number;
+    afterHoursShare: number | null;
+    afterHoursBooked: number;
+    missedOrDropped: number;
+  };
+  speed: {
+    emailP50: number | null;
+    emailP95: number | null;
+    bookP50: number | null;
+    /** Designer emails sent within the brief's five-minute target, out of all that were sent. */
+    emailWithin5Min: number;
+    emailCount: number;
+  };
   funnel: {
     received: number;
     qualified: number;
@@ -403,7 +420,16 @@ export interface Metrics {
     verdicts: { yes: number; maybe: number; no: number };
     noReasons: Array<{ code: string; label: string; count: number }>;
   };
-  cost: { totalInr: number; perBookingInr: number; perCallInr: number; voiceMinutes: number };
+  cost: {
+    totalInr: number;
+    perBookingInr: number;
+    perCallInr: number;
+    voiceMinutes: number;
+    /** Running cost at the studio's expected monthly volume; null until there's a call to extrapolate from. */
+    projectedMonthlyInr: number | null;
+  };
+  /** The brief wants per-sq-ft prices quoted; pricing.md says never. How often callers asked, and what happened. */
+  price: { asked: number; bookedAnyway: number; assistantPriceLanguage: number };
   value: { wonInr: number; pipelineLowInr: number; pipelineHighInr: number; openDeals: number };
   health: {
     emailSent: number;
@@ -483,6 +509,10 @@ export function computeMetrics(snap: Snapshot, since?: Date): Metrics {
     .filter((v): v is number => v !== null && v >= 0)
     .sort((a, b) => a - b);
 
+  const bookedCallIds = new Set(confirmedBookings.map((b) => b.callId));
+  const afterHoursBooked = inRange.filter((c) => c.afterHours && bookedCallIds.has(c.id)).length;
+  const priceAskers = inRange.filter((c) => callerAskedForPrice(c.transcript));
+
   const voiceMinutes = inRange.reduce((sum, c) => sum + (c.durationSec ?? 0) / 60, 0);
   const voice = computeCallCost({
     voiceMinutes,
@@ -501,12 +531,15 @@ export function computeMetrics(snap: Snapshot, since?: Date): Metrics {
       total: inRange.length,
       afterHours,
       afterHoursShare: inRange.length > 0 ? afterHours / inRange.length : null,
+      afterHoursBooked,
       missedOrDropped,
     },
     speed: {
       emailP50: percentile(emailLatencies, 0.5),
       emailP95: percentile(emailLatencies, 0.95),
       bookP50: percentile(bookLatencies, 0.5),
+      emailWithin5Min: emailLatencies.filter((sec) => sec <= 300).length,
+      emailCount: emailLatencies.length,
     },
     funnel: {
       received: inRange.length,
@@ -522,6 +555,19 @@ export function computeMetrics(snap: Snapshot, since?: Date): Metrics {
       perBookingInr: costPerUnit(totalInr, confirmedBookings.length),
       perCallInr: costPerUnit(totalInr, inRange.length),
       voiceMinutes,
+      projectedMonthlyInr:
+        inRange.length > 0
+          ? (voice.totalInr / inRange.length) * env.EXPECTED_ENQUIRIES_PER_MONTH + env.OTHER_FIXED_COST_INR_PER_MONTH
+          : null,
+    },
+    price: {
+      asked: priceAskers.length,
+      bookedAnyway: priceAskers.filter((c) => bookedCallIds.has(c.id)).length,
+      // The guard only sees text our code generates; the live voice agent's speech is
+      // governed by its prompt. The transcript is the real evidence of what was said.
+      assistantPriceLanguage: inRange.filter((c) =>
+        parseTranscript(c.transcript).turns.some((t) => t.kind === "agent" && checkPriceGuard(t.text).violated)
+      ).length,
     },
     value: {
       wonInr,

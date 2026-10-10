@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { isDashboardAuthed } from "@/lib/api/dashboard-auth";
+import { env } from "@/lib/env";
 import {
   buildEnquiryRows,
   computeDailySeries,
@@ -74,7 +75,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     .filter((r) => !since || r.startedAt >= since)
     .slice(0, 6);
 
-  const { calls, funnel, value, cost, speed, health } = metrics;
+  const { calls, funnel, value, cost, speed, health, price } = metrics;
   const conversion = funnel.qualified > 0 ? funnel.booked / funnel.qualified : null;
   const didntConnect = calls.missedOrDropped;
 
@@ -101,7 +102,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             foot={
               calls.total === 0
                 ? "No calls in this period"
-                : `${formatPct(calls.afterHoursShare)} came after hours${didntConnect > 0 ? ` · ${didntConnect} didn’t connect` : ""}`
+                : [
+                    calls.afterHours > 0
+                      ? `${calls.afterHours} after hours${calls.afterHoursBooked > 0 ? `, ${calls.afterHoursBooked} of them booked` : ""}`
+                      : "None after hours",
+                    didntConnect > 0 ? `${didntConnect} didn’t connect` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
             }
           />
           <Kpi
@@ -124,7 +132,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             icon="clock"
             label="Designer notified in"
             value={formatLatency(speed.emailP50)}
-            foot={speed.emailP95 !== null ? `median, call end → email · slowest ${formatLatency(speed.emailP95)}` : "median, call end → email"}
+            foot={
+              speed.emailCount > 0
+                ? `${speed.emailWithin5Min} of ${speed.emailCount} within the 5-minute target · slowest ${formatLatency(speed.emailP95)}`
+                : "median, call end → email"
+            }
           />
         </section>
 
@@ -132,11 +144,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <div className="card col7">
             <div className="cardHead">
               <div>
-                <h2 className="cardTitle">Needs your attention</h2>
+                <h2 className="cardTitle">Needs follow-up</h2>
                 <p className="cardSub">
                   {attention.length === 0
-                    ? "Nothing waiting on you"
-                    : `${attention.length} item${attention.length === 1 ? "" : "s"} — callbacks, consultations to log, anything broken`}
+                    ? "Nothing slipping through the cracks"
+                    : `${attention.length} item${attention.length === 1 ? "" : "s"} — each has an owner, so nothing slips through`}
                 </p>
               </div>
             </div>
@@ -160,7 +172,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 </>
               )}
               {" "}
-              · {Math.round(cost.voiceMinutes)} min of calls. Voice minutes only; model usage isn&apos;t tracked.
+              · {Math.round(cost.voiceMinutes)} min of calls.
+              {cost.projectedMonthlyInr !== null && (
+                <>
+                  {" "}
+                  At the studio&apos;s ~{env.EXPECTED_ENQUIRIES_PER_MONTH} enquiries a month, that&apos;s about{" "}
+                  <strong>{formatInr(cost.projectedMonthlyInr)}</strong> a month.
+                </>
+              )}{" "}
+              Voice minutes only; model usage isn&apos;t tracked.
             </p>
           </div>
         </section>
@@ -183,6 +203,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <h2 className="cardTitle">Why we said no</h2>
                 <p className="cardSub">{funnel.verdicts.no} declined enquir{funnel.verdicts.no === 1 ? "y" : "ies"}</p>
               </div>
+              {funnel.verdicts.no > 0 && (
+                <Link href="/dashboard/enquiries?f=declined" className="cardLink">
+                  Review them →
+                </Link>
+              )}
             </div>
             <ReasonBars reasons={funnel.noReasons} />
           </div>
@@ -221,11 +246,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               </span>
             </span>
             <span className="healthItem">
-              <span className={`dot dot-${health.priceGuardHits > 0 ? "warn" : "good"}`} />
+              <span className={`dot dot-${health.priceGuardHits > 0 || price.assistantPriceLanguage > 0 ? "warn" : "good"}`} />
               <span>
-                Price guard{" "}
+                Pricing{" "}
                 <strong>
-                  {health.priceGuardHits === 0 ? "no prices leaked" : `${health.priceGuardHits} price${health.priceGuardHits === 1 ? "" : "s"} blocked`}
+                  {health.priceGuardHits > 0
+                    ? `${health.priceGuardHits} price${health.priceGuardHits === 1 ? "" : "s"} blocked in notes/summaries`
+                    : price.asked > 0
+                      ? `${price.asked} caller${price.asked === 1 ? "" : "s"} asked for a price${price.bookedAnyway > 0 ? `, ${price.bookedAnyway} still booked` : ""}`
+                      : "no price questions"}
+                  {price.assistantPriceLanguage > 0
+                    ? ` · assistant used price language on ${price.assistantPriceLanguage} call${price.assistantPriceLanguage === 1 ? "" : "s"} — worth a look`
+                    : " · none quoted"}
                 </strong>
               </span>
             </span>

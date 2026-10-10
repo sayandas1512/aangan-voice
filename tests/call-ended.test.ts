@@ -19,6 +19,7 @@ const originalResendMode = process.env.RESEND_MODE;
 const originalGeminiMode = process.env.GEMINI_MODE;
 const originalCalcomMode = process.env.CALCOM_MODE;
 const originalHubspotMode = process.env.HUBSPOT_MODE;
+const originalFollowupEmail = process.env.FOLLOWUP_ALERT_EMAIL;
 let classifyRoute: typeof ClassifyRouteFn;
 let slotsRoute: typeof SlotsRouteFn;
 let bookRoute: typeof BookRouteFn;
@@ -38,6 +39,8 @@ const hasDb = Boolean(process.env.DATABASE_URL);
 // second when the suite runs with parallelism.
 const testRunStartedAt = new Date(Date.now() - 60_000); // 60s buffer for clock skew vs Neon's server clock
 const CALL_ENDED_EVENT_TYPES = [
+  "followup_alert_sent",
+  "followup_alert_failed",
   "classification_missing_at_call_end",
   "no_designer_email",
   "yes_or_maybe_without_booking",
@@ -59,6 +62,7 @@ beforeAll(async () => {
   delete process.env.GEMINI_MODE;
   delete process.env.CALCOM_MODE;
   delete process.env.HUBSPOT_MODE;
+  process.env.FOLLOWUP_ALERT_EMAIL = "followup-test@example.com"; // mock Resend: logs, never sends
   vi.resetModules();
   ({ POST: classifyRoute } = await import("@/app/api/vaani/tools/classify/route"));
   ({ POST: slotsRoute } = await import("@/app/api/vaani/tools/slots/route"));
@@ -103,6 +107,8 @@ afterAll(async () => {
   process.env.GEMINI_MODE = originalGeminiMode;
   process.env.CALCOM_MODE = originalCalcomMode;
   process.env.HUBSPOT_MODE = originalHubspotMode;
+  if (originalFollowupEmail === undefined) delete process.env.FOLLOWUP_ALERT_EMAIL;
+  else process.env.FOLLOWUP_ALERT_EMAIL = originalFollowupEmail;
   vi.resetModules();
   if (!hasDb) return;
   const { getDb } = await import("@/lib/db/client");
@@ -213,5 +219,31 @@ describe.skipIf(!hasDb)("processCallEnded", () => {
 
     const call = await getCallByVaaniCallId(callId);
     expect(call?.humanFollowup).toBe(true);
+  });
+
+  it("emails a callback alert once for a call flagged for a human, and not at all for a clean one", async () => {
+    const { getDb } = await import("@/lib/db/client");
+    const { events } = await import("@/lib/db/schema");
+    const alertsFor = async (id: string) =>
+      (await getDb().select().from(events).where(eq(events.type, "followup_alert_sent"))).filter(
+        (e) => (e.payload as { callId?: string } | null)?.callId === id
+      ).length;
+
+    // Flagged: never classified, so processCallEnded sets human_followup.
+    const flaggedId = testCallId();
+    const input = { vaaniCallId: flaggedId, callerPhone: "+91-90000-02222", transcript: "t", rawPayload: {} };
+    await processCallEnded(input);
+    await processCallEnded(input); // a retried webhook must not alert twice
+    const flagged = await getCallByVaaniCallId(flaggedId);
+    expect(await alertsFor(flagged!.id)).toBe(1);
+
+    // Not flagged: a clean "no" verdict is a normal outcome, not a callback.
+    const fixture = CALL_FIXTURES.find((f) => f.id === "T03")!;
+    const cleanId = testCallId();
+    await classifyRoute(jsonRequest({ call_id: cleanId, caller_phone: fixture.callerPhone, answers: fixture.answers }));
+    await processCallEnded({ vaaniCallId: cleanId, transcript: "t", rawPayload: {} });
+    const clean = await getCallByVaaniCallId(cleanId);
+    expect(clean?.humanFollowup).toBe(false);
+    expect(await alertsFor(clean!.id)).toBe(0);
   });
 });

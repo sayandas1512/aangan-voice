@@ -6,6 +6,7 @@ import {
   formatDuration,
   formatInr,
   formatInrCompact,
+  callerAskedForPrice,
   formatLatency,
   hubspotDealUrl,
   parseRange,
@@ -161,5 +162,20 @@ describe("hubspotDealUrl", () => {
     expect(hubspotDealUrl("mock-deal-3", "247647285", "https://app.hubspot.com")).toBeUndefined();
     expect(hubspotDealUrl("353588754108", undefined, "https://app.hubspot.com")).toBeUndefined();
     expect(hubspotDealUrl(null, "247647285", "https://app.hubspot.com")).toBeUndefined();
+  });
+});
+
+describe("callerAskedForPrice", () => {
+  it("catches the ways callers actually ask what it costs", () => {
+    expect(callerAskedForPrice("Caller: can you tell me roughly how much something like that would cost?")).toBe(true);
+    expect(callerAskedForPrice("Caller: What might it cost?")).toBe(true);
+    expect(callerAskedForPrice("User: do you have a rate card?")).toBe(true);
+    expect(callerAskedForPrice("Caller: can you give me even a rough range? Just a ballpark.")).toBe(true);
+  });
+
+  it("ignores the assistant's own pricing talk and a budget the caller merely states", () => {
+    expect(callerAskedForPrice("Front Desk: Our pricing depends on the materials.\nCaller: Okay, book it.")).toBe(false);
+    expect(callerAskedForPrice("Caller: My budget is 1 to 1.5 lakh. Is that possible with you?")).toBe(false);
+    expect(callerAskedForPrice(null)).toBe(false);
   });
 });

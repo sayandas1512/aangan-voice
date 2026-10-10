@@ -162,11 +162,6 @@ export default async function CallDetailPage({
                 </button>
               </form>
             )}
-            {confirmed?.meetUrl && (
-              <a className="btn" href={confirmed.meetUrl} target="_blank" rel="noreferrer">
-                <Icon name="video" size={15} /> Meeting link
-              </a>
-            )}
             {hubspotUrl && (
               <a className="btn btnPrimary" href={hubspotUrl} target="_blank" rel="noreferrer">
                 Open in HubSpot <Icon name="external" size={14} />
@@ -322,7 +317,7 @@ export default async function CallDetailPage({
                         ? `₹${Number(bestOutcome.amountInr).toLocaleString("en-IN")}`
                         : bestOutcome
                           ? "Recorded"
-                          : "Log how the consultation went"}
+                          : "Not reported by the designer yet"}
                     </Step>
                   </>
                 )}
@@ -332,9 +327,11 @@ export default async function CallDetailPage({
             {confirmed && (
               <section className="card" id="outcome">
                 <div className="cardHead">
-                  <h2 className="cardTitle">How did the consultation go?</h2>
+                  <h2 className="cardTitle">Consultation outcome</h2>
                 </div>
-                <p className="helper">Updates the dashboard and the deal stage in HubSpot.</p>
+                <p className="helper">
+                  {designerName ?? "The designer"} normally reports this from the buttons in their email. Log it here only if they haven&apos;t — it updates the dashboard and the HubSpot deal.
+                </p>
                 {sp.saved === "outcome" && <FlashMessage tone="good">Saved.</FlashMessage>}
                 {sp.error === "amount" && <FlashMessage tone="bad">Enter a valid deal amount greater than zero.</FlashMessage>}
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { timeAgo } from "@/lib/domain/dashboard-format";
+import { OWNER_LABELS } from "@/lib/domain/followup";
 import type { AttentionItem } from "@/lib/domain/dashboard-metrics";
 import { resolveFollowupAction } from "../actions";
 import { Icon } from "./ui";
@@ -11,7 +12,7 @@ export default function AttentionList({ items, limit = 6 }: { items: AttentionIt
     return (
       <div className="allClear">
         <Icon name="checkCircle" size={22} />
-        <span>All clear — nothing needs you right now.</span>
+        <span>All clear — nothing is waiting on anyone.</span>
       </div>
     );
   }
@@ -32,6 +33,9 @@ export default function AttentionList({ items, limit = 6 }: { items: AttentionIt
             <div>
               <span className="attnTitle">{item.title}</span>
               <span className="attnWhen">{item.kind === "outcome" ? "" : timeAgo(item.when, now)}</span>
+            </div>
+            <div className="attnOwner">
+              Owner: <strong>{OWNER_LABELS[item.owner]}{item.ownerName ? ` · ${item.ownerName}` : ""}</strong>
             </div>
             <div className="attnDetail">{item.detail}</div>
             {item.preview && <div className="attnQuote">&ldquo;{item.preview}&rdquo;</div>}
@@ -56,7 +60,7 @@ export default function AttentionList({ items, limit = 6 }: { items: AttentionIt
           </div>
         </div>
       ))}
-      {hidden > 0 && <div className="moreNote">+ {hidden} more — resolve the ones above and they&apos;ll appear here.</div>}
+      {hidden > 0 && <div className="moreNote">+ {hidden} more — they&apos;ll appear here as the ones above are dealt with.</div>}
     </div>
   );
 }

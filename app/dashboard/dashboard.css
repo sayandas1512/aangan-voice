@@ -436,6 +436,17 @@
   margin-left: 8px;
 }
 
+.attnOwner {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin-top: 1px;
+}
+
+.attnOwner strong {
+  color: #4d4840;
+  font-weight: 600;
+}
+
 .attnDetail {
   color: var(--muted);
   margin-top: 1px;

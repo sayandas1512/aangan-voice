@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { followupReason } from "@/lib/domain/followup";
 import {
   computeDailySeries,
   computeMetrics,
@@ -127,6 +128,29 @@ describe("deriveAttention", () => {
     expect(items.map((i) => i.callId)).toEqual(["c2"]);
   });
 
+  it("frames a missing outcome as the designer not having reported, by name", () => {
+    const c = call("c9", { callerPhone: "+91-9999" });
+    const snap = snapshot({
+      calls: [c],
+      designers: [{ id: "d1", name: "Rohan", calcomHostId: null, email: null, active: true, createdAt: new Date() }],
+      bookings: [
+        {
+          id: "b9",
+          callId: "c9",
+          status: "confirmed",
+          startAt: new Date("2026-09-15T05:00:00Z"),
+          createdAt: new Date(),
+          calcomUid: null,
+          designerId: "d1",
+          meetUrl: null,
+        },
+      ],
+    });
+    const [item] = deriveAttention(snap, NOW);
+    expect(item.detail).toContain("Rohan hasn't reported");
+    expect(item.actionLabel).toBe("Open");
+  });
+
   it("puts broken integrations first, then follow-ups, then outcomes", () => {
     const followup = call("f", { humanFollowup: true, status: "missed", callerPhone: "+91-9" });
     const hub = call("h", { callerPhone: "+91-8" });
@@ -226,5 +250,90 @@ describe("computeDailySeries", () => {
     expect(computeDailySeries(snapshot(), undefined, NOW)).toEqual([
       { day: "2026-10-10", inHours: 0, afterHours: 0 },
     ]);
+  });
+});
+
+describe("followupReason", () => {
+  it("describes each way a call ends up needing a person", () => {
+    expect(followupReason({ status: "missed" })).toMatch(/^Missed call/);
+    expect(followupReason({ status: "dropped" })).toMatch(/^Call dropped/);
+    expect(followupReason({ status: "completed" })).toMatch(/couldn't qualify/);
+    expect(followupReason({ status: "completed", classificationReason: "Timeline is too short. Caller will ring back." })).toBe(
+      "Timeline is too short."
+    );
+  });
+});
+
+describe("owners", () => {
+  it("assigns callbacks to the front desk, missing outcomes to the designer, failures to the system", () => {
+    const missed = call("m", { humanFollowup: true, status: "missed", callerPhone: "+91-1" });
+    const hub = call("h", { callerPhone: "+91-2" });
+    const snap = snapshot({
+      calls: [missed, hub],
+      hubspot: [
+        { id: "hs", callId: "h", contactId: null, dealId: null, status: "failed", attempts: 5, lastError: "x", createdAt: new Date() },
+      ],
+    });
+    const owners = Object.fromEntries(deriveAttention(snap, NOW).map((i) => [i.kind, i.owner]));
+    expect(owners).toEqual({ system: "system", followup: "front_desk" });
+  });
+});
+
+describe("computeMetrics — what the brief asks the dashboard to prove", () => {
+  const booking = (callId: string) => ({
+    id: `b-${callId}`,
+    callId,
+    status: "confirmed" as const,
+    startAt: new Date("2026-10-09T05:00:00Z"),
+    createdAt: new Date("2026-10-08T05:01:00Z"),
+    calcomUid: null,
+    designerId: null,
+    meetUrl: null,
+  });
+  const notification = (callId: string, endedAt: Date, secondsLater: number) => ({
+    id: `n-${callId}`,
+    callId,
+    channel: "email" as const,
+    status: "sent" as const,
+    attempts: 1,
+    sentAt: new Date(endedAt.getTime() + secondsLater * 1000),
+    acknowledgedAt: null,
+    error: null,
+    createdAt: endedAt,
+  });
+
+  it("counts after-hours calls that still became a booking", () => {
+    const snap = snapshot({
+      calls: [call("night", { afterHours: true }), call("night2", { afterHours: true }), call("day")],
+      bookings: [booking("night"), booking("day")],
+    });
+    expect(computeMetrics(snap).calls).toMatchObject({ afterHours: 2, afterHoursBooked: 1 });
+  });
+
+  it("measures the designer email against the five-minute target", () => {
+    const ended = new Date("2026-09-10T05:04:00Z");
+    const snap = snapshot({
+      calls: [call("a", { endedAt: ended }), call("b", { endedAt: ended }), call("c", { endedAt: ended })],
+      notifications: [notification("a", ended, 20), notification("b", ended, 299), notification("c", ended, 420)],
+    });
+    expect(computeMetrics(snap).speed).toMatchObject({ emailWithin5Min: 2, emailCount: 3 });
+  });
+
+  it("projects the monthly running cost from the per-call cost at the expected volume", () => {
+    const m = computeMetrics(snapshot({ calls: [call("a", { durationSec: 120 }), call("b", { durationSec: 240 })] }));
+    expect(m.cost.projectedMonthlyInr).not.toBeNull();
+    // Voice-only here (no fixed cost configured): per-call cost scaled to the expected volume.
+    expect(m.cost.projectedMonthlyInr!).toBeCloseTo(m.cost.perCallInr * 200, 1);
+    expect(computeMetrics(snapshot()).cost.projectedMonthlyInr).toBeNull();
+  });
+
+  it("separates 'callers asked for a price' from 'the assistant used price language'", () => {
+    const asked = call("asked", {
+      transcript: "Caller: roughly how much would that cost?\nFront Desk: It depends on the site. The consultation will cover that.",
+    });
+    const slipped = call("slipped", { transcript: "Agent: that would be around 10 lakh for the full scope." });
+    const quiet = call("quiet", { transcript: "Agent: Hello.\nUser: Hi." });
+    const snap = snapshot({ calls: [asked, slipped, quiet], bookings: [booking("asked")] });
+    expect(computeMetrics(snap).price).toEqual({ asked: 1, bookedAnyway: 1, assistantPriceLanguage: 1 });
   });
 });

@@ -41,12 +41,22 @@ daily chart and funnel are plain CSS.
   "Mark handled" needed one new nullable column,
   `calls.followup_resolved_at` (applied via the Neon migration flow after
   explicit approval; additive, no data touched).
-- **Outcomes can now be logged from the dashboard**, not only from the
-  emailed links, reusing `recordSimpleOutcome`/`recordWonOutcome` so HubSpot
-  stage updates and idempotency behave identically. Server actions are
-  public POST endpoints, so each one re-checks the dashboard session itself
-  rather than trusting the page's redirect, validates ids as UUIDs, and only
-  redirects to paths inside `/dashboard`.
+- **Whose job is the consultation? Not the founder's.** Re-read against the
+  case brief: the meeting is between a designer and the caller (14 designers
+  take them), and the brief has the designer report the outcome from the
+  Held / No-show / Not a fit / Won buttons in their handoff email. The
+  dashboard's job, in Nikhil's words, is that he "never has to pull numbers
+  manually again" — oversight, not operations. So the dashboard has **no
+  meeting link** (it lives in the designer's email and the caller's invite;
+  the booking time and designer still show as proof a booking happened), and
+  a consultation with no outcome is framed as "Rohan hasn't reported how it
+  went" — a signal that a designer needs chasing — rather than a founder
+  chore. The dashboard outcome buttons remain only as a fallback, labelled
+  as such, because won revenue feeds the numbers he sees; they reuse
+  `recordSimpleOutcome`/`recordWonOutcome` so HubSpot stage updates and
+  idempotency behave identically. Server actions are public POST endpoints,
+  so each one re-checks the dashboard session itself, validates ids as
+  UUIDs, and only redirects to paths inside `/dashboard`.
 - **Mobile**: tables become cards under 720px and the four headline numbers
   stay a 2×2 grid so the attention list isn't pushed off the first screen.
 - **The site's front door was still the Next.js starter page** ("To get
@@ -65,6 +75,40 @@ daily chart and funnel are plain CSS.
   `createdate` itself, so these deals show today's date rather than their
   September call date; calls with no captured name became contacts named
   "Caller <last 5 digits>".
+- **Follow-ups have owners, and someone is now told.** The list is titled
+  "Needs follow-up" with an owner on each item (front desk for callbacks,
+  the designer for a missing outcome, "system" for a failed sync) — the
+  founder is watching it, not working it. It also exposed a real gap: a
+  missed/dropped/unqualified call previously appeared on the dashboard and
+  nowhere else, and nobody watches a dashboard at 7pm. A call that ends
+  flagged for a human now sends one email to `FOLLOWUP_ALERT_EMAIL`
+  (`lib/domain/followup-alert.ts`, wrapped around `processCallEnded` so it
+  fires once and sees flags set mid-call too). It carries no transcript
+  excerpt, for the same reason the designer note withholds a budget figure.
+- **Audited against the case brief** (what Nikhil asks the dashboard to
+  prove) and added only what a gap justified: the five-minute target
+  ("12 of 12 designer emails within it", not just a median); what the
+  after-hours third actually turned into ("3 after hours, 1 booked"); the
+  running cost at his own ~200 enquiries/month (he thinks monthly; the
+  brief gives the volume); and how often callers asked for a price. The
+  brief says to quote per-sq-ft pricing while `pricing.md` says never to —
+  so the dashboard shows the evidence rather than asserting it: callers who
+  asked, how many still booked, and whether the assistant used price
+  language. That last figure comes from scanning the transcripts, not the
+  price guard's event count, because the guard only sees text our code
+  writes — the live voice agent's speech is governed by its prompt. It
+  immediately found something real: on T10 the assistant repeated the
+  caller's own "1 to 1.5 lakh" back (which the rubric asks for), so the
+  claim "none quoted" would have been false and is not made. Also restored
+  the original design's review loop for declined calls ("Review them →").
+- **Production was missing three settings, found while building the alert
+  email**: `APP_BASE_URL` (unset, so every Acknowledge/Held/Won button and
+  transcript link in a real designer email would have pointed at
+  `localhost`), `ACTION_LINK_SECRET` (unset, so those buttons were signed
+  with a default string that is public in this repo — forgeable), and
+  `CRON_SECRET` (the retry endpoint was open). All three are now set on
+  Vercel. Lesson: mock-mode defaults that "just work" locally are exactly
+  the settings that silently fail open in production.
 - **Not built, on purpose**: a weekly digest email, per-designer views,
   editing a classification, and Gemini token-cost tracking. Each is
   plausible, none is needed to run the studio day to day.

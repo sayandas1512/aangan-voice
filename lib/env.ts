@@ -79,6 +79,10 @@ export const envSchema = z.object({
   // when this is set as a project env var; checked by /api/cron/retry so
   // the retry worker can't be triggered by an arbitrary public request.
   CRON_SECRET: z.string().optional(),
+  // Optional. When set, an email goes here whenever a call ends flagged for a
+  // human (missed, dropped, couldn't be qualified, booked without an email…)
+  // so those enquiries don't sit unseen on the dashboard. Unset = no alerts.
+  FOLLOWUP_ALERT_EMAIL: z.string().optional(),
 
   // Signs the outcome-action links (Acknowledge/Held/No-show/Not a
   // fit/Won) embedded in the designer email — see lib/domain/action-link.ts.
@@ -93,6 +97,9 @@ export const envSchema = z.object({
   VOICE_COST_INR_PER_MIN: z.coerce.number().default(0),
   GEMINI_COST_INR_PER_1K_TOKENS: z.coerce.number().default(0),
   OTHER_FIXED_COST_INR_PER_MONTH: z.coerce.number().default(0),
+  // Volume the studio actually gets (the case brief: ~200 a month) — only used
+  // to project the monthly running cost on the dashboard.
+  EXPECTED_ENQUIRIES_PER_MONTH: z.coerce.number().default(200),
 
   STUDIO_HOURS_START: z.string().default("10:00"),
   STUDIO_HOURS_END: z.string().default("19:00"),

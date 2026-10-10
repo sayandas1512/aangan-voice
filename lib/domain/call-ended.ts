@@ -21,6 +21,7 @@ import { buildActionUrl } from "@/lib/domain/action-link";
 import { attemptHubspotSync } from "@/lib/domain/hubspot-sync";
 import { nextRunAt } from "@/lib/domain/retry";
 import { getResendClient } from "@/lib/integrations/resend";
+import { sendFollowupAlert } from "@/lib/domain/followup-alert";
 
 export interface CallEndedInput {
   vaaniCallId: string;
@@ -43,7 +44,7 @@ const ANSWER_FIELD_LABELS: Record<string, string> = {
   timeline: "timeline",
 };
 
-export async function processCallEnded(input: CallEndedInput): Promise<"processed" | "already_processed"> {
+async function runCallEndedPipeline(input: CallEndedInput): Promise<"processed" | "already_processed"> {
   // Never overwrite an existing call's own data (notably callerPhone — the
   // webhook's copy may be masked per Vaani's docs) with the webhook's
   // best-effort fallback values; those are only used if this call was
@@ -198,4 +199,20 @@ export async function processCallEnded(input: CallEndedInput): Promise<"processe
   }
 
   return "processed";
+}
+
+/**
+ * The full post-call pipeline, then — once, on the first run only — a
+ * callback alert if anything along the way flagged the call for a human
+ * (a missed/dropped call, a failed classify, a booking with no usable
+ * email…). Wrapped rather than edited into each early return above, since
+ * the flag can be set mid-call by the tool endpoints as well as in here.
+ */
+export async function processCallEnded(input: CallEndedInput): Promise<"processed" | "already_processed"> {
+  const status = await runCallEndedPipeline(input);
+  if (status === "processed") {
+    const call = await getCallByVaaniCallId(input.vaaniCallId);
+    if (call?.humanFollowup) await sendFollowupAlert(call.id);
+  }
+  return status;
 }

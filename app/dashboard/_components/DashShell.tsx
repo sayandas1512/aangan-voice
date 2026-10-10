@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { env } from "@/lib/env";
 import { RANGE_LABELS, type RangeKey } from "@/lib/domain/dashboard-format";
 import LogoutButton from "../LogoutButton";
-import { Icon } from "./ui";
 import "../dashboard.css";
 
 const RANGE_ORDER: RangeKey[] = ["7d", "30d", "all"];
@@ -53,10 +52,6 @@ export default function DashShell({ active, range, children }: DashShellProps) {
                 ))}
               </div>
             )}
-            <Link href="/talk" className="btn btnPrimary">
-              <Icon name="mic" size={15} />
-              <span className="hideSm">Talk to the assistant</span>
-            </Link>
             {env.DASHBOARD_REQUIRE_PASSWORD && <LogoutButton />}
           </div>
         </div>

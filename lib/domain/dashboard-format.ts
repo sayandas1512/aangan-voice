@@ -242,3 +242,19 @@ export function hubspotDealUrl(
   if (!dealId || !portalId || !/^\d+$/.test(dealId)) return undefined;
   return `${appBase.replace(/\/$/, "")}/contacts/${portalId}/record/0-3/${dealId}`;
 }
+
+// ---------------------------------------------------------------------------
+// Did the caller ask what it costs?
+// ---------------------------------------------------------------------------
+const PRICE_ASK = /\b(how much|cost|costs|price|prices|pricing|ballpark|per sq(?:uare)?\.? ?f(?:ee|oo)?t|rates?|charges?|quote)\b/i;
+
+/**
+ * True when a CALLER (not the assistant) asked about money. The brief wants
+ * the system to "quote standard per-square-foot pricing" while `pricing.md`
+ * says never to — so the dashboard shows how often it was asked and what
+ * happened anyway (see computeMetrics().price). Deliberately matches only
+ * caller turns, and not a bare "budget", which callers volunteer rather than ask.
+ */
+export function callerAskedForPrice(raw: string | null | undefined): boolean {
+  return parseTranscript(raw).turns.some((t) => t.kind === "caller" && PRICE_ASK.test(t.text));
+}
