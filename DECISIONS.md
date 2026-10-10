@@ -1003,3 +1003,18 @@ the API key in the client bundle) were removed from the code, `.env.example`,
 `.env.local` and Vercel. The assistant is reached through Vaani's own call
 channel; the tools and call-ended webhook behave identically. Worth raising
 with Vaani support if an on-site embed is wanted later.
+
+### Phase 11 (continued): what the first live calls showed
+
+- The real post-call webhook is NOT the batched shape from Test Connectivity: it
+  arrives as `{"event":"call_postprocessing", ...}` with no `events` array. The
+  route now treats such a wrapper as a single event (fields from `data` or top
+  level). Initially it ignored these, so calls never completed.
+- The tools' `call_id` parameter is filled in by the agent, not by Vaani
+  (Vaani's real id is `webrtc-<epoch>-<hex>`; the agent supplied a timestamp).
+  When the webhook's id matches no row, it is matched to the single open call
+  whose row was created during that call's time window; if two or more fit it
+  stays unmatched (logged) rather than risk a wrong attach.
+- `book` accepts a missing name (falls back to a stored name or "Aangan caller"
+  and flags a callback); `classify` with no details asks for them and stores
+  nothing.

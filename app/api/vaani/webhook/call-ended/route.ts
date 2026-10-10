@@ -134,13 +134,21 @@ export async function POST(request: Request) {
     }
 
     // The mid-call tools fill `call_id` from the conversation, so it can differ
-    // from the id Vaani reports here. If nothing matches, and exactly one call
-    // started in the last hour is still open, it is the one that just ended.
+    // from the id Vaani reports here (a live call used a timestamp it made up,
+    // while Vaani's own id was "webrtc-<epoch>-<hex>"). If nothing matches,
+    // look for the open call whose row was created DURING this call (the row
+    // appears at the first tool call, i.e. between call start and end). Only
+    // an unambiguous single candidate is used; with two or more we leave it
+    // unmatched rather than attach a transcript to the wrong enquiry.
     if (!(await getCallByVaaniCallId(vaaniCallId))) {
-      const open = await listOpenCallsSince(new Date(Date.now() - 60 * 60 * 1000));
-      if (open.length === 1) {
-        await logEvent("webhook_call_id_remapped", { from: vaaniCallId, to: open[0].vaaniCallId, callId: open[0].id });
-        vaaniCallId = open[0].vaaniCallId;
+      const endedAt = item.timestamp ? new Date(item.timestamp) : new Date();
+      const duration = numberField(item.data, "call_duration", "duration_sec", "durationSec", "duration");
+      const startedAfter = new Date(endedAt.getTime() - (duration ?? 30 * 60) * 1000 - 60 * 1000);
+      const endedBefore = endedAt.getTime() + 60 * 1000;
+      const during = (await listOpenCallsSince(startedAfter)).filter((c) => c.startedAt.getTime() <= endedBefore);
+      if (during.length === 1) {
+        await logEvent("webhook_call_id_remapped", { from: vaaniCallId, to: during[0].vaaniCallId, callId: during[0].id });
+        vaaniCallId = during[0].vaaniCallId;
       }
     }
 
