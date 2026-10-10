@@ -16,7 +16,6 @@ import {
   formatInr,
   formatInrCompact,
   formatLatency,
-  formatPct,
   parseRange,
   rangeSince,
   type RangeKey,
@@ -76,7 +75,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     .slice(0, 6);
 
   const { calls, funnel, value, cost, speed, health, price } = metrics;
-  const conversion = funnel.qualified > 0 ? funnel.booked / funnel.qualified : null;
   const didntConnect = calls.missedOrDropped;
 
   const emailTone = health.emailFailed > 0 ? "bad" : "good";
@@ -116,7 +114,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             icon="calendar"
             label="Consultations booked"
             value={String(funnel.booked)}
-            foot={conversion === null ? "No qualified enquiries yet" : `${formatPct(conversion)} of qualified enquiries`}
+            foot={funnel.qualified === 0 ? "No qualified enquiries yet" : `${funnel.booked} of ${funnel.qualified} qualified enquiries`}
           />
           <Kpi
             icon="rupee"
