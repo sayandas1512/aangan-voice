@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { env, envSchema, integrationMode } from "@/lib/env";
+import { env, envSchema } from "@/lib/env";
 
 describe("env", () => {
   it("defaults INTEGRATIONS_MODE to mock", () => {

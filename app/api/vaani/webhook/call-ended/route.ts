@@ -132,7 +132,7 @@ export async function POST(request: Request) {
       continue;
     }
 
-    let vaaniCallId = item.call_id ?? stringField(item.data, "call_id", "vaani_call_id", "room_name");
+    const vaaniCallId = item.call_id ?? stringField(item.data, "call_id", "vaani_call_id", "room_name");
     if (!vaaniCallId) {
       results.push({ event: item.event, outcome: "missing_call_id" });
       continue;
