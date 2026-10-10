@@ -49,6 +49,15 @@ export function getCallByVaaniCallId(vaaniCallId: string) {
     .then((rows) => rows[0]);
 }
 
+/** Calls still open (no call-ended processed yet) that started at or after `since`, newest first. */
+export function listOpenCallsSince(since: Date) {
+  return getDb()
+    .select()
+    .from(calls)
+    .where(and(eq(calls.status, "in_progress"), gte(calls.startedAt, since)))
+    .orderBy(desc(calls.startedAt));
+}
+
 export function getCallById(id: string) {
   return getDb().select().from(calls).where(eq(calls.id, id)).then((rows) => rows[0]);
 }

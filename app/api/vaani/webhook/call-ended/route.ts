@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getVaaniClient } from "@/lib/integrations/vaani";
 import { vaaniDeliveryIdempotencyKey } from "@/lib/domain/idempotency";
 import { processCallEnded } from "@/lib/domain/call-ended";
-import { hasEventType, logEvent } from "@/lib/db/queries";
+import { getCallByVaaniCallId, hasEventType, listOpenCallsSince, logEvent } from "@/lib/db/queries";
 
 /**
  * Receives Vaani's real registered webhook deliveries — confirmed live via
@@ -94,10 +94,32 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, status: "test_received" });
   }
 
-  console.log("[webhook] envelope", envelope.event, envelope.events.map((e) => e.event).join(",") || "(no events)");
+  // Shape-only log (long strings truncated) so an unexpected payload can be diagnosed without leaking a transcript.
+  console.log(
+    "[webhook] envelope",
+    JSON.stringify(json, (_k, v) => (typeof v === "string" && v.length > 60 ? `${v.slice(0, 60)}…(${v.length})` : v)).slice(0, 2500)
+  );
+  // A real call's delivery arrives with NO nested `events` array: the wrapper
+  // itself is the event ({"event":"call_postprocessing", ...fields}). Only
+  // the connectivity test used the batch shape. Treat such a wrapper as a
+  // single item, reading fields from its `data` object or from the top level.
+  let items = envelope.events;
+  if (items.length === 0 && classifyEventType(envelope.event) !== "ignored") {
+    const top = json as Record<string, unknown>;
+    const nested = top.data && typeof top.data === "object" ? (top.data as Record<string, unknown>) : top;
+    items = [
+      {
+        event: envelope.event,
+        call_id: typeof top.call_id === "string" ? top.call_id : undefined,
+        timestamp: envelope.timestamp,
+        data: nested,
+      },
+    ];
+  }
+
   const results: Array<{ callId?: string; event: string; outcome: string }> = [];
 
-  for (const item of envelope.events) {
+  for (const item of items) {
     const kind = classifyEventType(item.event);
     if (kind === "ignored") {
       console.log("[webhook] ignored event", item.event, item.call_id);
@@ -105,10 +127,21 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const vaaniCallId = item.call_id ?? stringField(item.data, "call_id", "vaani_call_id", "room_name");
+    let vaaniCallId = item.call_id ?? stringField(item.data, "call_id", "vaani_call_id", "room_name");
     if (!vaaniCallId) {
       results.push({ event: item.event, outcome: "missing_call_id" });
       continue;
+    }
+
+    // The mid-call tools fill `call_id` from the conversation, so it can differ
+    // from the id Vaani reports here. If nothing matches, and exactly one call
+    // started in the last hour is still open, it is the one that just ended.
+    if (!(await getCallByVaaniCallId(vaaniCallId))) {
+      const open = await listOpenCallsSince(new Date(Date.now() - 60 * 60 * 1000));
+      if (open.length === 1) {
+        await logEvent("webhook_call_id_remapped", { from: vaaniCallId, to: open[0].vaaniCallId, callId: open[0].id });
+        vaaniCallId = open[0].vaaniCallId;
+      }
     }
 
     // No per-delivery id exists in the real payload (see module docstring)
