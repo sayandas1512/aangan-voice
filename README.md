@@ -15,6 +15,8 @@ One hard rule runs through all of it: **the assistant never states a price.**
 
 ## How it works
 
+The as-built component map is [`docs/component-map.png`](docs/component-map.png).
+
 ```
 Caller ── Vaani voice agent (prompt: agent/vaani-system-prompt.md)
             │
