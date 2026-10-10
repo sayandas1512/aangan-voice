@@ -44,9 +44,29 @@ const mockClient: HubspotClient = {
 };
 
 // ---------------------------------------------------------------------------
-// live — HubSpot CRM API v3 (https://developers.hubspot.com/docs/api/crm)
+// live — HubSpot CRM API v3, verified directly against the real API during
+// Phase 9's live smoke test (contact/deal/note create, association types 3
+// and 202, and a dealstage update all confirmed with curl — see
+// DECISIONS.md).
 // ---------------------------------------------------------------------------
 const HUBSPOT_API_BASE = "https://api.hubapi.com";
+
+// Our Outcome enum values are internal labels, not HubSpot dealstage ids —
+// confirmed live that passing "won" as a dealstage is simply wrong for a
+// real pipeline (its ids look like "closedwon"). "held" (consultation
+// happened, no decision yet) moves the deal forward without closing it;
+// "no_show"/"not_fit" both close the deal as lost.
+function outcomeToDealStage(outcome: Outcome): string {
+  switch (outcome) {
+    case "won":
+      return env.HUBSPOT_STAGE_WON ?? "closedwon";
+    case "no_show":
+    case "not_fit":
+      return env.HUBSPOT_STAGE_LOST ?? "closedlost";
+    case "held":
+      return env.HUBSPOT_STAGE_HELD ?? "qualifiedtobuy";
+  }
+}
 
 function authHeaders() {
   if (!env.HUBSPOT_ACCESS_TOKEN) {
@@ -147,7 +167,7 @@ const liveClient: HubspotClient = {
       headers: authHeaders(),
       body: JSON.stringify({
         properties: {
-          dealstage: input.outcome,
+          dealstage: outcomeToDealStage(input.outcome),
           amount: input.amountInr,
         },
       }),

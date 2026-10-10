@@ -13,7 +13,7 @@ describe("verifyToolRequest", () => {
     // (DECISIONS.md) — clear it so this test exercises the actual default,
     // not whatever override happens to be in the ambient environment.
     delete process.env.VAANI_MODE;
-    delete process.env.VAANI_WEBHOOK_SECRET;
+    delete process.env.VAANI_TOOL_SHARED_SECRET;
     vi.resetModules();
     const { verifyToolRequest } = await import("@/lib/api/vaani-tool-auth");
     const req = new Request("https://example.com", { method: "POST" });
@@ -22,7 +22,7 @@ describe("verifyToolRequest", () => {
 
   it("requires a matching shared-secret header when VAANI_MODE is live", async () => {
     process.env.VAANI_MODE = "live";
-    process.env.VAANI_WEBHOOK_SECRET = "test-secret";
+    process.env.VAANI_TOOL_SHARED_SECRET = "test-secret";
     vi.resetModules();
     const { verifyToolRequest } = await import("@/lib/api/vaani-tool-auth");
 
@@ -43,7 +43,7 @@ describe("verifyToolRequest", () => {
 
   it("denies every request when live mode has no secret configured, rather than defaulting open", async () => {
     process.env.VAANI_MODE = "live";
-    delete process.env.VAANI_WEBHOOK_SECRET;
+    delete process.env.VAANI_TOOL_SHARED_SECRET;
     vi.resetModules();
     const { verifyToolRequest } = await import("@/lib/api/vaani-tool-auth");
 

@@ -106,6 +106,7 @@ export function updateCall(
     transcript: string;
     recordingUrl: string;
     humanFollowup: boolean;
+    followupResolvedAt: Date;
     rawPayload: unknown;
   }>
 ) {

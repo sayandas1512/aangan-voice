@@ -167,6 +167,11 @@ const liveClient: GeminiClient = {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0,
+            // gemini-3.8-flash defaults to extended "thinking" — ~440 hidden
+            // tokens and 5-6s latency for a trivial classification, blowing
+            // well past qualify.ts's timeout. Disabled: this call needs a
+            // fast rubric lookup, not reasoning.
+            thinkingConfig: { thinkingBudget: 0 },
             responseMimeType: "application/json",
             responseSchema: {
               type: "object",
@@ -207,7 +212,10 @@ const liveClient: GeminiClient = {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { thinkingConfig: { thinkingBudget: 0 } },
+        }),
       }
     );
     if (!res.ok) {

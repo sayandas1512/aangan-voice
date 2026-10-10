@@ -1,12 +1,28 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq, inArray, and, gte, lte } from "drizzle-orm";
-import { POST as classifyRoute } from "@/app/api/vaani/tools/classify/route";
-import { POST as slotsRoute } from "@/app/api/vaani/tools/slots/route";
-import { POST as bookRoute } from "@/app/api/vaani/tools/book/route";
-import { processCallEnded } from "@/lib/domain/call-ended";
+import type { POST as ClassifyRouteFn } from "@/app/api/vaani/tools/classify/route";
+import type { POST as SlotsRouteFn } from "@/app/api/vaani/tools/slots/route";
+import type { POST as BookRouteFn } from "@/app/api/vaani/tools/book/route";
+import type { processCallEnded as ProcessCallEndedFn } from "@/lib/domain/call-ended";
 import { getCallByVaaniCallId, getNotificationsForCall, getHubspotSyncForCall, listActiveDesigners } from "@/lib/db/queries";
 import { CALL_FIXTURES } from "./fixtures/calls";
+
+// This project's .env.local sets RESEND_MODE/GEMINI_MODE/CALCOM_MODE=live
+// (DECISIONS.md), but this suite patches designer emails to a reserved,
+// non-deliverable @example.com address (see patchedDesigners below) —
+// sending real mail to it would just fail, and setUpBookedCall() would
+// otherwise create a real booking on the studio's actual Cal.com calendar
+// on every run. Loaded dynamically after clearing all three so the whole
+// pipeline runs against mocks regardless of the ambient environment.
+const originalResendMode = process.env.RESEND_MODE;
+const originalGeminiMode = process.env.GEMINI_MODE;
+const originalCalcomMode = process.env.CALCOM_MODE;
+const originalHubspotMode = process.env.HUBSPOT_MODE;
+let classifyRoute: typeof ClassifyRouteFn;
+let slotsRoute: typeof SlotsRouteFn;
+let bookRoute: typeof BookRouteFn;
+let processCallEnded: typeof ProcessCallEndedFn;
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -39,6 +55,16 @@ const patchedDesigners: Array<{ id: string; originalEmail: string | null }> = []
 
 beforeAll(async () => {
   if (!hasDb) return;
+  delete process.env.RESEND_MODE;
+  delete process.env.GEMINI_MODE;
+  delete process.env.CALCOM_MODE;
+  delete process.env.HUBSPOT_MODE;
+  vi.resetModules();
+  ({ POST: classifyRoute } = await import("@/app/api/vaani/tools/classify/route"));
+  ({ POST: slotsRoute } = await import("@/app/api/vaani/tools/slots/route"));
+  ({ POST: bookRoute } = await import("@/app/api/vaani/tools/book/route"));
+  ({ processCallEnded } = await import("@/lib/domain/call-ended"));
+
   const designers = await listActiveDesigners();
   const { getDb } = await import("@/lib/db/client");
   const { designers: designersTable } = await import("@/lib/db/schema");
@@ -55,8 +81,8 @@ beforeAll(async () => {
 // these tests call through require the shared secret header.
 function jsonRequest(body: unknown) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.VAANI_WEBHOOK_SECRET) {
-    headers["x-vaani-shared-secret"] = process.env.VAANI_WEBHOOK_SECRET;
+  if (process.env.VAANI_TOOL_SHARED_SECRET) {
+    headers["x-vaani-shared-secret"] = process.env.VAANI_TOOL_SHARED_SECRET;
   }
   return new Request("https://example.com", {
     method: "POST",
@@ -73,6 +99,11 @@ function testCallId(): string {
 }
 
 afterAll(async () => {
+  process.env.RESEND_MODE = originalResendMode;
+  process.env.GEMINI_MODE = originalGeminiMode;
+  process.env.CALCOM_MODE = originalCalcomMode;
+  process.env.HUBSPOT_MODE = originalHubspotMode;
+  vi.resetModules();
   if (!hasDb) return;
   const { getDb } = await import("@/lib/db/client");
   const { calls, designers: designersTable, events } = await import("@/lib/db/schema");

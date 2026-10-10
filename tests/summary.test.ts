@@ -1,6 +1,18 @@
-import { describe, expect, it, afterAll } from "vitest";
+import { describe, expect, it, afterAll, beforeAll, vi } from "vitest";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { summarizeCall } from "@/lib/domain/summary";
+import type { summarizeCall as SummarizeCallFn } from "@/lib/domain/summary";
+
+// This project's .env.local sets GEMINI_MODE=live (DECISIONS.md) — this
+// suite tests the deterministic mock summarizer specifically, so it
+// isolates GEMINI_MODE regardless of the ambient environment.
+const originalGeminiMode = process.env.GEMINI_MODE;
+let summarizeCall: typeof SummarizeCallFn;
+
+beforeAll(async () => {
+  delete process.env.GEMINI_MODE;
+  vi.resetModules();
+  ({ summarizeCall } = await import("@/lib/domain/summary"));
+});
 
 // The last test below triggers a real price_guard_violation event against
 // the shared production events table. Scope cleanup to this run's window
@@ -10,6 +22,8 @@ const testRunStartedAt = new Date(Date.now() - 60_000); // 60s buffer for clock 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
 afterAll(async () => {
+  process.env.GEMINI_MODE = originalGeminiMode;
+  vi.resetModules();
   if (!hasDb) return;
   const { getDb } = await import("@/lib/db/client");
   const { events } = await import("@/lib/db/schema");

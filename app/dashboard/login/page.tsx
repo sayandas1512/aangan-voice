@@ -35,8 +35,12 @@ export default function DashboardLoginPage() {
   return (
     <div className="loginWrap">
       <div className="loginCard">
-        <h1>Aangan Dashboard</h1>
-        <p>Founder view — speed, funnel, cost, value.</p>
+        <div className="brand">
+          <span className="brandMark">A</span>
+          <span>Aangan Studio</span>
+        </div>
+        <h1>Founder dashboard</h1>
+        <p>Enter the password to see today&apos;s enquiries.</p>
         {error && <p className="loginError">{error}</p>}
         <form onSubmit={handleSubmit}>
           <input

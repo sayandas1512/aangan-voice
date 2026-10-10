@@ -1,9 +1,9 @@
-import { describe, expect, it, afterAll } from "vitest";
+import { describe, expect, it, afterAll, beforeAll, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
-import { POST as classifyRoute } from "@/app/api/vaani/tools/classify/route";
-import { POST as slotsRoute } from "@/app/api/vaani/tools/slots/route";
-import { POST as bookRoute } from "@/app/api/vaani/tools/book/route";
+import type { POST as ClassifyRouteFn } from "@/app/api/vaani/tools/classify/route";
+import type { POST as SlotsRouteFn } from "@/app/api/vaani/tools/slots/route";
+import type { POST as BookRouteFn } from "@/app/api/vaani/tools/book/route";
 import { GET as actionGet, POST as actionPost } from "@/app/api/notifications/action/route";
 import { signActionToken } from "@/lib/domain/action-link";
 import { getBookingForCall, getCallByVaaniCallId, getOutcomesForBooking } from "@/lib/db/queries";
@@ -11,12 +11,33 @@ import { CALL_FIXTURES } from "./fixtures/calls";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
+// This project's .env.local sets GEMINI_MODE/CALCOM_MODE=live (DECISIONS.md)
+// — setUpBooking() below would otherwise create a real booking on the
+// studio's actual Cal.com calendar on every run. Loaded dynamically after
+// clearing both, so classify/book run against mocks regardless of the
+// ambient environment.
+const originalGeminiMode = process.env.GEMINI_MODE;
+const originalCalcomMode = process.env.CALCOM_MODE;
+let classifyRoute: typeof ClassifyRouteFn;
+let slotsRoute: typeof SlotsRouteFn;
+let bookRoute: typeof BookRouteFn;
+
+beforeAll(async () => {
+  if (!hasDb) return;
+  delete process.env.GEMINI_MODE;
+  delete process.env.CALCOM_MODE;
+  vi.resetModules();
+  ({ POST: classifyRoute } = await import("@/app/api/vaani/tools/classify/route"));
+  ({ POST: slotsRoute } = await import("@/app/api/vaani/tools/slots/route"));
+  ({ POST: bookRoute } = await import("@/app/api/vaani/tools/book/route"));
+});
+
 // VAANI_MODE is "live" in this project's .env.local, so the tool routes
 // these tests call through require the shared secret header.
 function jsonRequest(body: unknown) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.VAANI_WEBHOOK_SECRET) {
-    headers["x-vaani-shared-secret"] = process.env.VAANI_WEBHOOK_SECRET;
+  if (process.env.VAANI_TOOL_SHARED_SECRET) {
+    headers["x-vaani-shared-secret"] = process.env.VAANI_TOOL_SHARED_SECRET;
   }
   return new Request("https://example.com", {
     method: "POST",
@@ -33,6 +54,9 @@ function testCallId(): string {
 }
 
 afterAll(async () => {
+  process.env.GEMINI_MODE = originalGeminiMode;
+  process.env.CALCOM_MODE = originalCalcomMode;
+  vi.resetModules();
   if (!hasDb || createdCallIds.length === 0) return;
   const { getDb } = await import("@/lib/db/client");
   const { calls } = await import("@/lib/db/schema");

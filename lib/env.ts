@@ -15,7 +15,17 @@ export const envSchema = z.object({
 
   VAANI_API_KEY: z.string().optional(),
   VAANI_AGENT_ID: z.string().optional(),
+  // Vaani-generated secret (vv_whk_…) shown once when a real webhook
+  // endpoint is registered — verifies X-VaaniVoice-Signature on
+  // call.completed/call.failed (lib/integrations/vaani.ts).
   VAANI_WEBHOOK_SECRET: z.string().optional(),
+  // A separate, self-chosen secret for mid-call tool auth (classify/slots/
+  // book/pre-call) — NOT the same credential as the webhook secret above,
+  // despite both living under lib/api/vaani-tool-auth.ts historically
+  // sharing one var before the real webhook was registered (see
+  // DECISIONS.md). This is the value configured as each custom tool's
+  // `x-vaani-shared-secret` header in Vaani's dashboard.
+  VAANI_TOOL_SHARED_SECRET: z.string().optional(),
   // Deliberately the SAME key as VAANI_API_KEY, under the NEXT_PUBLIC_
   // prefix Next.js requires to inline a value into the client bundle —
   // the /app/talk embed widget needs it visible in the page. Vaani's own
@@ -28,10 +38,25 @@ export const envSchema = z.object({
 
   CALCOM_API_KEY: z.string().optional(),
   CALCOM_EVENT_TYPE_ID: z.string().optional(),
+  // Cal.com requires a real, deliverable attendee email and verifies the
+  // domain — used only when a caller never gave one (see calcom.ts).
+  CALCOM_FALLBACK_EMAIL: z.string().optional(),
 
   HUBSPOT_ACCESS_TOKEN: z.string().optional(),
   HUBSPOT_PIPELINE_ID: z.string().optional(),
   HUBSPOT_STAGE_BOOKED: z.string().optional(),
+  // Deal-stage ids a booking's eventual outcome moves to (lib/integrations/
+  // hubspot.ts) — our own Outcome enum ("won"/"held"/"no_show"/"not_fit")
+  // isn't a valid HubSpot dealstage id, confirmed live (the account's
+  // default pipeline uses ids like "closedwon", not "won"). Defaults match
+  // HubSpot's standard default-pipeline stage ids; override if the
+  // account's pipeline uses custom stages.
+  HUBSPOT_STAGE_WON: z.string().optional(),
+  HUBSPOT_STAGE_LOST: z.string().optional(),
+  HUBSPOT_STAGE_HELD: z.string().optional(),
+  // Only used to build "Open in HubSpot" deep links on the dashboard.
+  HUBSPOT_PORTAL_ID: z.string().optional(),
+  HUBSPOT_APP_BASE: z.string().default("https://app.hubspot.com"),
 
   // Resend is the designer-handoff channel (replaced Telegram — see
   // DECISIONS.md). RESEND_FROM is required once RESEND_MODE/INTEGRATIONS_MODE

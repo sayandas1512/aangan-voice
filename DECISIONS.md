@@ -3,6 +3,173 @@
 Running record of defaults chosen without a blocking question, and anything
 that differs from the brief once real docs/APIs are consulted. Newest first.
 
+## Phase 10 — Dashboard redesign, HubSpot backfill, public front door (2026-10-10)
+
+**Design principle**: the old dashboard answered "what are the system's
+metrics?" (six sections of identical tiles, raw `out_of_area` codes, phone
+numbers instead of names). A studio founder's real questions are "who do I
+need to call back today?" and "is this worth what it costs?" — so it's now
+attention-first. References: Stripe's Dashboard (few hero numbers with
+context), Linear/HubSpot task inboxes (the "needs attention" queue is the
+first thing under the numbers), Pipedrive/HubSpot funnels, Front/Intercom
+conversation view (facts + chat-style transcript), status pages (one health
+strip instead of six operational tiles). Warm neutral palette with a single
+clay accent, chosen for an interior-design studio; colour is reserved for
+status so red/amber/green always mean something. No chart library — the
+daily chart and funnel are plain CSS.
+
+- **Everything is derived from one snapshot** (`loadSnapshot()` +
+  pure functions in `lib/domain/dashboard-metrics.ts`) rather than SQL per
+  tile, so rules like "what counts as needing attention" are unit-tested
+  (`tests/dashboard-attention.test.ts`). Fine at founder scale; revisit if
+  the call log reaches tens of thousands of rows.
+- **Times were wrong, and nobody would have noticed**: the old pages called
+  `toLocaleString("en-IN")` on the server, which runs in UTC on Vercel, so
+  every time was 5½ hours off. All dashboard dates now render in the
+  studio's timezone explicitly (`lib/domain/dashboard-format.ts`).
+- **Next.js 16 Cache Components bit again**: with the password gate off,
+  nothing marked the dashboard as request-time before `new Date()` was
+  read, which fails prerender validation (it surfaced as a dev-overlay
+  error; `next build` would have failed). Fixed with `await connection()`
+  at the top of each dashboard page, alongside the existing
+  `instant = false`.
+- **Follow-ups clear themselves when they're resolved** instead of nagging
+  forever: `human_followup` stays true as the historical fact, but a call
+  leaves the to-do list when the founder clicks "Mark handled", its booking
+  has an outcome logged, or the same number later got through on a
+  completed call (a dropped line followed by a successful call-back).
+  "Mark handled" needed one new nullable column,
+  `calls.followup_resolved_at` (applied via the Neon migration flow after
+  explicit approval; additive, no data touched).
+- **Outcomes can now be logged from the dashboard**, not only from the
+  emailed links, reusing `recordSimpleOutcome`/`recordWonOutcome` so HubSpot
+  stage updates and idempotency behave identically. Server actions are
+  public POST endpoints, so each one re-checks the dashboard session itself
+  rather than trusting the page's redirect, validates ids as UUIDs, and only
+  redirects to paths inside `/dashboard`.
+- **Mobile**: tables become cards under 720px and the four headline numbers
+  stay a 2×2 grid so the attention list isn't pushed off the first screen.
+- **The site's front door was still the Next.js starter page** ("To get
+  started, edit page.tsx") with the tab titled "Create Next App". `/` is now
+  a short landing page with the two entry points (talk to the assistant /
+  founder dashboard), and `/talk` was brought into the same visual system,
+  with a suggested thing to say and a link to see what was captured.
+- **Backfilled the 12 booked September enquiries into the real HubSpot**
+  (`scripts/resync-hubspot-sept.ts`, idempotent — only touches rows still
+  holding a `seed-deal-*` placeholder), through the same `attemptHubspotSync`
+  the live pipeline uses, then mirrored each recorded outcome onto the
+  deal's stage. Deliberately only those 12, not all 40 PDF records: the
+  pipeline only ever creates a deal for a qualified, booked call, so
+  pushing declined calls or the WhatsApp/web-form enquiries would create CRM
+  records the real system would never have made. Caveats: HubSpot sets
+  `createdate` itself, so these deals show today's date rather than their
+  September call date; calls with no captured name became contacts named
+  "Caller <last 5 digits>".
+- **Not built, on purpose**: a weekly digest email, per-designer views,
+  editing a classification, and Gemini token-cost tracking. Each is
+  plausible, none is needed to run the studio day to day.
+
+## Phase 9 (continued) — Live tool wiring confirmed, real integrations wired (2026-10-09/10)
+
+Resolves the single biggest open risk from the previous section: **Vaani
+does call our mid-call tool endpoints**, confirmed via Vercel function logs
+during a live test, not by inference. Several real-API mismatches surfaced
+along the way — each one found by testing against the actual deployed
+endpoint or the actual third-party API directly (curl), not by reading
+docs, since in every case here the docs/assumptions were wrong in some way.
+
+- **Deployed to Vercel** (`aangan-voice-pied.vercel.app` alias) via the
+  CLI. The retry cron (`vercel.json`) was `* * * * *` (every minute);
+  Hobby-plan accounts only allow daily crons, so it's now `0 0 * * *` —
+  the job it drives (HubSpot sync retries) already has its own
+  exponential backoff, so once-daily is a fine floor, not a regression.
+- **Vaani's custom-tool parameter extractor fills flat top-level fields
+  from the conversation, not a nested object.** The `classify` tool was
+  configured with dotted parameter names (`answers.propertyType` etc.,
+  matching our endpoint's original nested `{ answers: {...} }` body) —
+  live logs showed `classify` being called with `{"call_id":"1"}` only,
+  across every attempt, zero of the seven dotted params ever populated.
+  Fixed by flattening: `classify`/`book` now accept flat top-level answer
+  fields (still backward-compatible with a nested `answers` object, since
+  nothing stops a different caller from sending that shape), and the
+  Vaani tool configs were updated to flat parameter names.
+- **No caller-ID on a WebRTC call.** Real telephony gives you the caller's
+  number for free; the WebRTC embed doesn't — `caller_phone` only exists
+  if the caller says it out loud and the agent extracts it in time. Made
+  `caller_phone` optional on `classify`/`book`, falling back to
+  `"unknown"` (same convention `call-ended.ts` already used for its own
+  webhook fallback) rather than hard-rejecting the call.
+- **Parameters left optional in Vaani don't get collected.** Vaani appears
+  to only make the agent actually pursue a parameter conversationally if
+  it's marked Required — with everything optional, `classify` fired
+  before any qualifying answers were gathered at all. Marked
+  `propertyType`/`area`/`workType`/`timeline` Required on `classify` and
+  `name` Required on `book` (budget/decisionMaker stay optional — matches
+  the rubric's own "never probe" guidance).
+- **Gemini key works, but `gemini-2.0-flash` (the brief's model) is
+  retired** — the API's own 404 pointed at `gemini-3.8-flash`. That model
+  defaults to extended "thinking" (~440 hidden tokens, 5-6s latency for a
+  trivial classification — verified with a direct timed curl), blowing
+  past `qualify.ts`'s 2.5s budget. Fixed with `thinkingConfig: {
+  thinkingBudget: 0 }` (cuts it to ~2.4s) and raised the timeout to 6000ms
+  for realistic network-variance headroom — the agent already says a
+  filler line before calling classify (context-pack.md's Latency
+  section), so a few seconds here is expected, not dead air.
+- **Cal.com's real v2 API differs from what the original unverified
+  implementation assumed, confirmed by curl against the live API**:
+  endpoints are versioned via a `cal-api-version` header (not the URL) —
+  getting it wrong is a generic 404 "Cannot GET", not a 400, which is
+  exactly what the original code hit silently. Slots use `start`/`end`
+  query params (not `startTime`/`endTime`) and return `{start: iso}` rows
+  (not `{time: iso}` — the original field name was simply wrong). Fixed
+  all three.
+- **Cal.com hard-requires `attendee.email` and verifies the domain can
+  receive mail** — an RFC 2606 `.invalid` placeholder (the "obviously
+  safe" choice) was rejected outright with `email_domain_cannot_receive_mail`.
+  Our own `book` tool treats a missing/invalid caller email as a soft
+  fallback (phone-only + `human_followup`), not a failure, so this needed
+  a real, receivable address rather than a dummy one. Falls back to a new
+  `CALCOM_FALLBACK_EMAIL` env var (set to the studio's own inbox) only
+  when the caller never gave one — the booking confirmation just lands
+  with the studio instead of nowhere.
+- **Found and fixed a real crash, not just a mismatch**: `liveBook` wrote
+  Cal.com's own numeric host id (e.g. `3338149`) directly into
+  `bookings.designer_id`, which is a UUID FK into *our* `designers`
+  table, not Cal.com's id space — Postgres rejected the insert
+  (`invalid input syntax for type uuid`). Fixed by resolving Cal.com's
+  returned host id back to our internal designer via the `calcomHostId`
+  column (already in the schema, already seeded as a placeholder for
+  exactly this) rather than ever returning Cal.com's own id as if it were
+  ours.
+- **One real Cal.com member, not two** — the live Cal.com account has a
+  single host (the founder's own account) on its one event type ("30 min
+  meeting", reused rather than creating a new one). Both seeded designers
+  (Asha/Rohan) now point `calcomHostId` at that same real host, so either
+  internal label can be credited; a second real Cal.com team member can
+  be added later without any code change.
+- **All designer notification email routed to one real inbox** by request
+  — both seeded designers' `email` column was pointed at the founder's
+  own address for this phase, rather than fictitious `@aanganstudio.example`
+  addresses that would bounce in live Resend mode.
+- **Seeded the 20 real September 2026 phone enquiries** from the
+  assignment's own PDF (`knowledge/transcripts/T01–T20.md`, verbatim) as
+  historical `calls` rows via `scripts/seed-sept-enquiries.ts`, replaying
+  the same side effects the real call-ended pipeline produces (answers,
+  classification, booking, notification, HubSpot sync) with backdated
+  timestamps. Deliberately did **not** seed the PDF's WhatsApp/web-form
+  sections (W01-10, F01-10) — the schema is call-centric by design (the
+  product is a voice AI for phone calls), and forcing other channels into
+  `calls` rows would misrepresent them as calls that never happened.
+- **Test-suite env isolation**: flipping `VAANI_MODE`/`GEMINI_MODE`/
+  `RESEND_MODE`/`CALCOM_MODE` to `live` in `.env.local` (needed for the
+  deployed app) broke several tests that assumed mock-mode defaults or
+  would otherwise have hit real APIs on every local/CI run (real Cal.com
+  bookings on the studio's actual calendar, real emails to a fake
+  `@example.com`). Each affected suite now explicitly clears the relevant
+  `*_MODE` var (and `vi.resetModules()`s before a dynamic re-import)
+  before running, so it tests the mock path regardless of the ambient
+  environment, and restores it in `afterAll`.
+
 ## Phase 9 (start) — Vaani live wiring, phone → WebRTC pivot (2026-10-09)
 
 - **Found and fixed a clock-skew bug in Phase 8's own event-cleanup fix,

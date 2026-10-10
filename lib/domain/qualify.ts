@@ -6,7 +6,12 @@ export interface QualifyOptions {
   client?: GeminiClient;
 }
 
-const DEFAULT_TIMEOUT_MS = 2500;
+// Real gemini-3.8-flash round-trips at ~2.4-4.5s even with thinking
+// disabled (see lib/integrations/gemini.ts) — measured live, with
+// variance under network contention. The agent says a filler line before
+// calling classify (agent/context-pack.md's Latency section), so a few
+// seconds here is expected, not dead air.
+const DEFAULT_TIMEOUT_MS = 6000;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {

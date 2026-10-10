@@ -65,6 +65,9 @@ export const calls = pgTable(
     transcript: text("transcript"),
     recordingUrl: text("recording_url"),
     humanFollowup: boolean("human_followup").notNull().default(false),
+    // Set when the founder clicks "Mark handled" on the dashboard — human_followup
+    // stays true as the historical fact; this just takes it off the attention list.
+    followupResolvedAt: timestamp("followup_resolved_at", { withTimezone: true }),
     rawPayload: jsonb("raw_payload"),
     ...timestamps(),
   },

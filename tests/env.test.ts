@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { env, envSchema, integrationMode } from "@/lib/env";
 
 describe("env", () => {
@@ -6,11 +6,19 @@ describe("env", () => {
     expect(env.INTEGRATIONS_MODE).toBe("mock");
   });
 
-  it("falls back to the global mode when no per-service override is set", () => {
-    // VAANI has a permanent live-mode override in this project's .env.local
-    // (DECISIONS.md) — GEMINI stays unset, so it's the one that actually
-    // demonstrates the fallback.
-    expect(integrationMode("GEMINI")).toBe(env.INTEGRATIONS_MODE);
+  it("falls back to the global mode when no per-service override is set", async () => {
+    // This project's .env.local gives all five services (VAANI, GEMINI,
+    // RESEND, CALCOM, HUBSPOT) a permanent live-mode override
+    // (DECISIONS.md), so no service is ever naturally unset to
+    // demonstrate the fallback against — isolated instead by clearing
+    // one var's override within the test and re-importing fresh.
+    const original = process.env.VAANI_MODE;
+    delete process.env.VAANI_MODE;
+    vi.resetModules();
+    const fresh = await import("@/lib/env");
+    expect(fresh.integrationMode("VAANI")).toBe(fresh.env.INTEGRATIONS_MODE);
+    process.env.VAANI_MODE = original;
+    vi.resetModules();
   });
 
   it("defaults ACTION_LINK_SECRET and APP_BASE_URL so mock mode needs no config", () => {

@@ -94,11 +94,28 @@ const mockClient: CalcomClient = {
 };
 
 // ---------------------------------------------------------------------------
-// live — Cal.com API v2. Endpoints per https://cal.com/docs/api-reference/v2
-// (unverified against real docs until Phase 9 live smoke test — see
-// DECISIONS.md).
+// live — Cal.com API v2, verified directly against the real API during
+// Phase 9's live smoke test (see DECISIONS.md). Endpoints are individually
+// versioned via the `cal-api-version` header, not the URL; getting it wrong
+// produces a generic 404 "Cannot GET", not a 400, which is what the
+// original unverified implementation hit. Query/body param names below
+// (`start`/`end`, `start` not `time` in slot rows, `attendee.email`
+// required) are also real-API findings, not guesses.
 // ---------------------------------------------------------------------------
 const CALCOM_API_BASE = "https://api.cal.com/v2";
+// Cal.com's booking form hard-requires attendee.email and actively
+// verifies the domain can receive mail (verified live: an RFC 2606
+// `.invalid` placeholder was rejected with `email_domain_cannot_receive_mail`,
+// not just a format check) — even though our own book tool treats a
+// missing/invalid caller email as a soft fallback, not a failure (see
+// app/api/vaani/tools/book/route.ts). Falls back to the studio's own inbox
+// rather than a fake domain, since it has to be a real, deliverable
+// address — the booking confirmation just lands with the studio instead
+// of nowhere, which is harmless since this only fires when the caller
+// never gave an email at all.
+function calcomFallbackEmail(): string {
+  return env.CALCOM_FALLBACK_EMAIL ?? "no-email-given@aangan-studio.invalid";
+}
 
 async function liveGetSlots(): Promise<Slot[]> {
   if (!env.CALCOM_API_KEY || !env.CALCOM_EVENT_TYPE_ID) {
@@ -107,24 +124,31 @@ async function liveGetSlots(): Promise<Slot[]> {
   const now = new Date();
   const until = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const res = await fetch(
-    `${CALCOM_API_BASE}/slots?eventTypeId=${env.CALCOM_EVENT_TYPE_ID}&startTime=${now.toISOString()}&endTime=${until.toISOString()}`,
-    { headers: { Authorization: `Bearer ${env.CALCOM_API_KEY}` } }
+    `${CALCOM_API_BASE}/slots?eventTypeId=${env.CALCOM_EVENT_TYPE_ID}&start=${now.toISOString().slice(0, 10)}&end=${until.toISOString().slice(0, 10)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${env.CALCOM_API_KEY}`,
+        "cal-api-version": "2024-09-04",
+      },
+    }
   );
   if (!res.ok) {
     throw new Error(`Cal.com getSlots failed: ${res.status} ${await res.text()}`);
   }
   const data = await res.json();
   interface RawSlot {
-    time: string;
-    attendees?: Array<{ name?: string }>;
+    start: string;
   }
+  // The slots endpoint doesn't return host/attendee info per slot (only
+  // the booking response does) — designerFirstName is generic until a
+  // booking actually confirms who the designer is.
   const allSlots: Slot[] = (Object.values(data.data ?? {}) as RawSlot[][])
     .flat()
     .slice(0, 3)
     .map((s) => ({
-      id: s.time,
-      startIso: s.time,
-      designerFirstName: s.attendees?.[0]?.name ?? "Studio Designer",
+      id: s.start,
+      startIso: s.start,
+      designerFirstName: "Studio Designer",
     }));
   return allSlots;
 }
@@ -138,12 +162,17 @@ async function liveBook(input: BookInput): Promise<BookResult> {
     headers: {
       Authorization: `Bearer ${env.CALCOM_API_KEY}`,
       "Content-Type": "application/json",
+      "cal-api-version": "2024-08-13",
     },
     body: JSON.stringify({
       eventTypeId: Number(env.CALCOM_EVENT_TYPE_ID),
       start: input.slotId,
-      attendee: { name: input.name, email: input.email, phoneNumber: input.phone, timeZone: env.TIMEZONE },
-      location: { type: "integrations:google:meet" },
+      attendee: {
+        name: input.name,
+        email: input.email ?? calcomFallbackEmail(),
+        phoneNumber: input.phone,
+        timeZone: env.TIMEZONE,
+      },
     }),
   });
   if (res.status === 409) {
@@ -153,12 +182,23 @@ async function liveBook(input: BookInput): Promise<BookResult> {
     throw new Error(`Cal.com book failed: ${res.status} ${await res.text()}`);
   }
   const data = await res.json();
+  const calcomHostId: string | undefined = data.data?.hosts?.[0]?.id ? String(data.data.hosts[0].id) : undefined;
+
+  // bookings.designer_id is a UUID FK into OUR OWN designers table, not
+  // Cal.com's id space — writing Cal.com's numeric host id there directly
+  // crashes the insert (verified live: Postgres rejects "3338149" as a
+  // UUID). Resolve back to our internal designer by matching calcomHostId,
+  // same field scripts/seed.ts already seeds for exactly this purpose.
+  const designers = await listActiveDesigners();
+  const matchedDesigner = calcomHostId ? designers.find((d) => d.calcomHostId === calcomHostId) : undefined;
+  const fallbackDesigner = matchedDesigner ?? designers[0];
+
   return {
     status: "confirmed",
     startIso: data.data?.start ?? input.slotId,
-    designer: data.data?.hosts?.[0]?.name ?? "Studio Designer",
-    designerId: data.data?.hosts?.[0]?.id ?? "unknown",
-    meetUrl: data.data?.location ?? "",
+    designer: fallbackDesigner?.name ?? data.data?.hosts?.[0]?.name ?? "Studio Designer",
+    designerId: fallbackDesigner?.id ?? "unknown",
+    meetUrl: data.data?.meetingUrl ?? data.data?.location ?? "",
     calcomUid: data.data?.uid ?? "",
   };
 }

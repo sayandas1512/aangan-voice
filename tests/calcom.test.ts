@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { getCalcomClient } from "@/lib/integrations/calcom";
+import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
+import type { getCalcomClient as GetCalcomClientFn } from "@/lib/integrations/calcom";
 
 // These exercise lib/db/queries.ts (listActiveDesigners), which needs a real
 // DATABASE_URL. Locally that comes from .env.local (loaded by
@@ -7,8 +7,26 @@ import { getCalcomClient } from "@/lib/integrations/calcom";
 // rather than fail the pipeline — see DECISIONS.md, Phase 3 notes.
 const describeIfDb = process.env.DATABASE_URL ? describe : describe.skip;
 
+// This project's .env.local sets CALCOM_MODE=live (DECISIONS.md) — this
+// suite tests the deterministic mock client specifically (and would
+// otherwise create real bookings on the studio's actual Cal.com calendar
+// on every run), so it isolates CALCOM_MODE regardless of the ambient
+// environment.
 describeIfDb("calcom mock", () => {
-  const client = getCalcomClient();
+  const originalMode = process.env.CALCOM_MODE;
+  let client: ReturnType<typeof GetCalcomClientFn>;
+
+  beforeAll(async () => {
+    delete process.env.CALCOM_MODE;
+    vi.resetModules();
+    const { getCalcomClient } = await import("@/lib/integrations/calcom");
+    client = getCalcomClient();
+  });
+
+  afterAll(() => {
+    process.env.CALCOM_MODE = originalMode;
+    vi.resetModules();
+  });
 
   it("returns slots with distinct ids and real ISO start times", async () => {
     const slots = await client.getSlots();
