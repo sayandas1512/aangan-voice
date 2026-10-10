@@ -5,6 +5,10 @@ import { RANGE_LABELS, type RangeKey } from "@/lib/domain/dashboard-format";
 import LogoutButton from "../LogoutButton";
 import "../dashboard.css";
 
+// One shared login (see DASHBOARD_REQUIRE_PASSWORD) with one owner, so this is
+// a fixed label rather than a per-user lookup.
+const FOUNDER = { name: "Nikhil Deshpande", role: "Founder" };
+
 const RANGE_ORDER: RangeKey[] = ["7d", "30d", "all"];
 
 interface DashShellProps {
@@ -52,6 +56,15 @@ export default function DashShell({ active, range, children }: DashShellProps) {
                 ))}
               </div>
             )}
+            <div className="whoami" title={`Signed in as ${FOUNDER.name}`}>
+              <span className="whoamiAvatar" aria-hidden="true">
+                {FOUNDER.name.charAt(0)}
+              </span>
+              <span className="whoamiText">
+                <span className="whoamiName">{FOUNDER.name}</span>
+                <span className="whoamiRole">{FOUNDER.role}</span>
+              </span>
+            </div>
             {env.DASHBOARD_REQUIRE_PASSWORD && <LogoutButton />}
           </div>
         </div>
