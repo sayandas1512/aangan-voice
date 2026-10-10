@@ -17,10 +17,7 @@ export default function Home() {
         </p>
 
         <div className={styles.actions}>
-          <Link href="/talk" className={styles.primary}>
-            Talk to the assistant
-          </Link>
-          <Link href="/dashboard" className={styles.secondary}>
+          <Link href="/dashboard" className={styles.primary}>
             Open the founder dashboard
           </Link>
         </div>

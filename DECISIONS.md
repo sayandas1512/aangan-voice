@@ -990,3 +990,16 @@ None added yet beyond what section 2 specifies (`zod`, `vitest`,
 `drizzle-orm`, `@neondatabase/serverless`, `drizzle-kit`, plus `tsx` and
 `@vitejs/plugin-react` as vitest's own tooling requirements). Any future
 addition will be recorded here with a reason before it's installed.
+
+## Phase 11: `/talk` browser embed removed
+
+Vaani's embed script (`www.vaanilabs.in/embed/v1/vaanivoice.js`) is served with
+`Cross-Origin-Resource-Policy: same-site`, so browsers refuse to load it on any
+other origin (`ERR_BLOCKED_BY_RESPONSE.NotSameSite`, reproduced in two browsers).
+The widget therefore can't run on our domain. Rather than ship a demo page that
+shows an error, `app/talk/page.tsx` was deleted, the landing page now points
+only to the dashboard, and the `NEXT_PUBLIC_VAANI_*` variables (which exposed
+the API key in the client bundle) were removed from the code, `.env.example`,
+`.env.local` and Vercel. The assistant is reached through Vaani's own call
+channel; the tools and call-ended webhook behave identically. Worth raising
+with Vaani support if an on-site embed is wanted later.
