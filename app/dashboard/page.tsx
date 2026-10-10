@@ -129,6 +129,23 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             }
           />
           <Kpi
+            icon="rupee"
+            label="Avg. cost per consultation"
+            value={cost.perBookingInr > 0 ? formatInr(cost.perBookingInr) : "—"}
+            foot={
+              calls.total === 0
+                ? "No calls in this period"
+                : [
+                    `${formatInr(cost.perCallInr)} per call`,
+                    cost.projectedMonthlyInr !== null
+                      ? `about ${formatInr(cost.projectedMonthlyInr)} a month at ~${env.EXPECTED_ENQUIRIES_PER_MONTH} enquiries`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+            }
+          />
+          <Kpi
             icon="clock"
             label="Designer notified in"
             value={formatLatency(speed.emailP50)}
