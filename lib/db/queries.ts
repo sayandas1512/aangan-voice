@@ -91,10 +91,27 @@ export async function findOrCreateCallByVaaniId(input: {
   startedAt: Date;
   afterHours: boolean;
   route?: CallRoute;
+  /**
+   * The agent fills the tools' `call_id` itself and sometimes reuses a generic
+   * value ("1") on every call. When set, an existing row with that id is only
+   * reused while it is still open and younger than this many ms; otherwise it
+   * is renamed out of the way so the new call gets its own row.
+   */
+  reuseWithinMs?: number;
 }) {
+  const { reuseWithinMs, ...values } = input;
+  if (reuseWithinMs !== undefined) {
+    const old = await getCallByVaaniCallId(input.vaaniCallId);
+    if (old && (old.status !== "in_progress" || Date.now() - old.startedAt.getTime() > reuseWithinMs)) {
+      await getDb()
+        .update(calls)
+        .set({ vaaniCallId: `${old.vaaniCallId}~${old.id.slice(0, 8)}` })
+        .where(eq(calls.id, old.id));
+    }
+  }
   const inserted = await getDb()
     .insert(calls)
-    .values(input)
+    .values(values)
     .onConflictDoNothing({ target: calls.vaaniCallId })
     .returning();
   if (inserted[0]) return inserted[0];
@@ -112,6 +129,7 @@ export function updateCall(
     endedAt: Date;
     durationSec: number;
     status: CallStatus;
+    vaaniCallId: string;
     transcript: string;
     recordingUrl: string;
     humanFollowup: boolean;

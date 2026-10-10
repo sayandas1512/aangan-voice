@@ -18,13 +18,20 @@ const BodySchema = z.object({
   call_id: z.string().min(1),
   // Same WebRTC caveat as classify/route.ts: no caller-ID source, so this
   // can only be what the caller said out loud (if anything).
-  caller_phone: z.string().min(1).optional(),
+  caller_phone: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
   slot_id: z.string().min(1),
   // Vaani's extractor sometimes omits it (a live call retried book six times
   // with only slot_id + email); refusing the booking over it would strand a
   // qualified caller, so a missing name falls back below instead.
   name: z.string().min(1).optional(),
-  email: z.string().optional(),
+  // Speech-to-text sometimes leaves spaces inside an email ("sayon das1512@…").
+  email: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.replace(/\s+/g, "").toLowerCase() : undefined)),
 });
 
 export async function POST(request: Request) {
@@ -45,6 +52,7 @@ export async function POST(request: Request) {
 
   const call = await findOrCreateCallByVaaniId({
     vaaniCallId: call_id,
+    reuseWithinMs: 12 * 60 * 1000,
     callerPhone,
     startedAt: now,
     afterHours: isAfterHours(now, {

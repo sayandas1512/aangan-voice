@@ -179,3 +179,15 @@ describe("callerAskedForPrice", () => {
     expect(callerAskedForPrice(null)).toBe(false);
   });
 });
+
+describe("parseTranscript with live Vaani timestamps", () => {
+  it("strips [hh:mm:ss] stamps and splits turns even when they share one line", async () => {
+    const { parseTranscript } = await import("@/lib/domain/dashboard-format");
+    const { turns } = parseTranscript("[10:39:56] AGENT: Hello there. [10:40:00] USER: I'm good.\n[10:40:07] AGENT: Home or office?");
+    expect(turns.map((t) => [t.kind, t.text])).toEqual([
+      ["agent", "Hello there."],
+      ["caller", "I'm good."],
+      ["agent", "Home or office?"],
+    ]);
+  });
+});

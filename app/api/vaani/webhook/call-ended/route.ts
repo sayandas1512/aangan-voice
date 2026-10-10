@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getVaaniClient } from "@/lib/integrations/vaani";
 import { vaaniDeliveryIdempotencyKey } from "@/lib/domain/idempotency";
 import { processCallEnded } from "@/lib/domain/call-ended";
-import { getCallByVaaniCallId, hasEventType, listOpenCallsSince, logEvent } from "@/lib/db/queries";
+import { getCallByVaaniCallId, hasEventType, listOpenCallsSince, logEvent, updateCall } from "@/lib/db/queries";
 
 /**
  * Receives Vaani's real registered webhook deliveries — confirmed live via
@@ -68,6 +68,11 @@ function numberField(data: Record<string, unknown>, ...keys: string[]): number |
     if (typeof value === "number") return value;
   }
   return undefined;
+}
+
+// calls.duration_sec is an integer column; Vaani reports fractional seconds (226.49).
+function roundedDuration(sec: number | undefined): number | undefined {
+  return sec === undefined ? undefined : Math.round(sec);
 }
 
 export async function POST(request: Request) {
@@ -148,7 +153,9 @@ export async function POST(request: Request) {
       const during = (await listOpenCallsSince(startedAfter)).filter((c) => c.startedAt.getTime() <= endedBefore);
       if (during.length === 1) {
         await logEvent("webhook_call_id_remapped", { from: vaaniCallId, to: during[0].vaaniCallId, callId: during[0].id });
-        vaaniCallId = during[0].vaaniCallId;
+        // Rename the row to Vaani's real id so a generic tool-side id ("1")
+        // is freed for the next call and later retries match directly.
+        await updateCall(during[0].id, { vaaniCallId });
       }
     }
 
@@ -160,7 +167,6 @@ export async function POST(request: Request) {
       results.push({ callId: vaaniCallId, event: item.event, outcome: "duplicate_delivery" });
       continue;
     }
-    await logEvent(deliveryKey, { receivedAt: new Date().toISOString() });
 
     const endedAtRaw = item.timestamp ?? stringField(item.data, "ended_at", "endedAt");
 
@@ -169,12 +175,15 @@ export async function POST(request: Request) {
       callerPhone: stringField(item.data, "phone_number", "caller_phone", "callerPhone", "from"),
       startedAt: undefined, // not present in the real payload; processCallEnded falls back sensibly
       endedAt: endedAtRaw ? new Date(endedAtRaw) : new Date(),
-      durationSec: numberField(item.data, "call_duration", "duration_sec", "durationSec", "duration"),
+      durationSec: roundedDuration(numberField(item.data, "call_duration", "duration_sec", "durationSec", "duration")),
       transcript: stringField(item.data, "transcript"),
       recordingUrl: stringField(item.data, "recording_url", "recordingUrl"),
       rawPayload: item,
       failed: kind === "failed",
     });
+    // Recorded only after processing succeeds: if it throws, Vaani's retry
+    // must be allowed through instead of being dropped as a duplicate.
+    await logEvent(deliveryKey, { receivedAt: new Date().toISOString() });
     results.push({ callId: vaaniCallId, event: item.event, outcome: status });
   }
 

@@ -188,8 +188,11 @@ export function parseTranscript(raw: string | null | undefined): { title?: strin
   const turns: TranscriptTurn[] = [];
   let title: string | undefined;
 
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
+  // Live Vaani transcripts prefix every turn with "[10:39:56] " (and may put
+  // several turns on one line): break before each stamp, then drop it.
+  const normalised = raw.replace(/\s*(\[\d{1,2}:\d{2}:\d{2}\])\s+/g, "\n$1 ");
+  for (const line of normalised.split(/\r?\n/)) {
+    const trimmed = line.trim().replace(/^\[\d{1,2}:\d{2}:\d{2}\]\s+/, "");
     if (!trimmed) continue;
 
     if (trimmed.startsWith("#")) {

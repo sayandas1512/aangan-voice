@@ -26,7 +26,10 @@ const BodySchema = z.object({
   // agent can only capture a phone number if the caller says one out loud,
   // and may not get to it before calling classify. Falls back to "unknown"
   // rather than rejecting the call (same fallback call-ended.ts already uses).
-  caller_phone: z.string().min(1).optional(),
+  caller_phone: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
   started_at: z.string().min(1).optional(),
   answers: AnswersSchema.optional(),
   propertyType: z.string().optional(),
@@ -70,6 +73,7 @@ export async function POST(request: Request) {
   // behavior (lib/domain/qualify.ts) happens after.
   const call = await findOrCreateCallByVaaniId({
     vaaniCallId: call_id,
+    reuseWithinMs: 12 * 60 * 1000,
     callerPhone: caller_phone ?? "unknown",
     startedAt,
     afterHours: isAfterHours(startedAt, {
