@@ -54,6 +54,17 @@ export async function POST(request: Request) {
   const startedAt = started_at ? new Date(started_at) : new Date();
   const mergedAnswers = { ...answers, ...flatAnswers };
 
+  // The agent sometimes calls classify the moment the call connects, before
+  // the caller has said anything. Judging an empty enquiry would store a
+  // meaningless "maybe", so tell the agent to ask instead and record nothing.
+  if (!Object.values(mergedAnswers).some((v) => typeof v === "string" && v.trim().length > 0)) {
+    return Response.json({
+      verdict: "maybe",
+      reason: "No details collected yet. Ask the caller about the property, area, size, work, timeline, then call classify again.",
+      missingFields: ["propertyType", "area", "sizeSqFt", "workType", "timeline", "decisionMaker"],
+    });
+  }
+
   // Write to Neon before any slow side effect (brief section 7): the call
   // row and raw answers land first, classify's own fallback-on-timeout
   // behavior (lib/domain/qualify.ts) happens after.

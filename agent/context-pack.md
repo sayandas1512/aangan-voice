@@ -79,8 +79,10 @@ maker):
 5. Rough budget range (caller may decline — mark "not given" and continue;
    never probe further per qualified.md's explicit guidance)
 6. When do they want to start or move in?
-7. Name, then email for the booking invite — read it back letter by letter
-   and confirm.
+7. Name, then email for the booking invite — read it back one character at a
+   time with spaces between them, never hyphens or the word "dash"; say
+   "at" and "dot" aloud, and numbers as words (e.g. "s a y a n, one five,
+   at gmail dot com"), then confirm. Always pass the caller's name to `book`.
 
 # Latency
 

@@ -7,6 +7,7 @@ import {
   findOrCreateCallByVaaniId,
   getBookingForCall,
   insertAnswers,
+  getAnswersForCall,
   insertBooking,
   updateCall,
 } from "@/lib/db/queries";
@@ -19,7 +20,10 @@ const BodySchema = z.object({
   // can only be what the caller said out loud (if anything).
   caller_phone: z.string().min(1).optional(),
   slot_id: z.string().min(1),
-  name: z.string().min(1),
+  // Vaani's extractor sometimes omits it (a live call retried book six times
+  // with only slot_id + email); refusing the booking over it would strand a
+  // qualified caller, so a missing name falls back below instead.
+  name: z.string().min(1).optional(),
   email: z.string().optional(),
 });
 
@@ -35,7 +39,7 @@ export async function POST(request: Request) {
     return badRequest("invalid request body", parsed.error.flatten());
   }
 
-  const { call_id, caller_phone, slot_id, name, email } = parsed.data;
+  const { call_id, caller_phone, slot_id, email } = parsed.data;
   const callerPhone = caller_phone ?? "unknown";
   const now = new Date();
 
@@ -49,6 +53,9 @@ export async function POST(request: Request) {
       hoursEnd: env.STUDIO_HOURS_END,
     }),
   });
+
+  const name = parsed.data.name ?? (await getAnswersForCall(call.id)).find((a) => a.field === "name")?.value ?? "Aangan caller";
+  const nameMissing = parsed.data.name === undefined;
 
   // Idempotent: a retried/duplicate book call for a call that already has
   // a confirmed booking returns that booking instead of booking again.
@@ -101,7 +108,7 @@ export async function POST(request: Request) {
     ].filter((r): r is { field: string; value: string } => r !== undefined)
   );
 
-  if (emailFlagNeeded) {
+  if (emailFlagNeeded || nameMissing) {
     await updateCall(call.id, { humanFollowup: true });
   }
 

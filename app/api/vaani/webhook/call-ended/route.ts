@@ -94,11 +94,13 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, status: "test_received" });
   }
 
+  console.log("[webhook] envelope", envelope.event, envelope.events.map((e) => e.event).join(",") || "(no events)");
   const results: Array<{ callId?: string; event: string; outcome: string }> = [];
 
   for (const item of envelope.events) {
     const kind = classifyEventType(item.event);
     if (kind === "ignored") {
+      console.log("[webhook] ignored event", item.event, item.call_id);
       results.push({ event: item.event, outcome: "ignored" });
       continue;
     }

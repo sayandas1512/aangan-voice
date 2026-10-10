@@ -91,6 +91,17 @@ describe.skipIf(!hasDb)("mid-call tool routes", () => {
     expect(res.status).toBe(400);
   });
 
+  it("classify: an empty enquiry asks for details and records nothing", async () => {
+    const callId = testCallId();
+    const res = await classifyRoute(jsonRequest({ call_id: callId }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.verdict).toBe("maybe");
+    expect(body.missingFields.length).toBeGreaterThan(0);
+    const { getCallByVaaniCallId } = await import("@/lib/db/queries");
+    expect(await getCallByVaaniCallId(callId)).toBeUndefined();
+  });
+
   it("slots: returns the mock slots in the tool-contract shape", async () => {
     const res = await slotsRoute(jsonRequest({ call_id: testCallId() }));
     expect(res.status).toBe(200);
@@ -160,6 +171,18 @@ describe.skipIf(!hasDb)("mid-call tool routes", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("confirmed");
+  });
+
+  it("book: a missing name still books and flags a callback instead of failing", async () => {
+    const callId = testCallId();
+    const slotsRes = await slotsRoute(jsonRequest({ call_id: callId }));
+    const { slots } = await slotsRes.json();
+
+    const res = await bookRoute(jsonRequest({ call_id: callId, slot_id: slots[0].id, email: "test@example.com" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).status).toBe("confirmed");
+    const { getCallByVaaniCallId } = await import("@/lib/db/queries");
+    expect((await getCallByVaaniCallId(callId))?.humanFollowup).toBe(true);
   });
 
   it("pre-call: a never-seen phone number is not a returning caller", async () => {
