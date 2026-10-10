@@ -8,6 +8,7 @@ import { GET as actionGet, POST as actionPost } from "@/app/api/notifications/ac
 import { signActionToken } from "@/lib/domain/action-link";
 import { getBookingForCall, getCallByVaaniCallId, getOutcomesForBooking } from "@/lib/db/queries";
 import { CALL_FIXTURES } from "./fixtures/calls";
+import { restoreEnv } from "./helpers/restore-env";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -54,8 +55,8 @@ function testCallId(): string {
 }
 
 afterAll(async () => {
-  process.env.GEMINI_MODE = originalGeminiMode;
-  process.env.CALCOM_MODE = originalCalcomMode;
+  restoreEnv("GEMINI_MODE", originalGeminiMode);
+  restoreEnv("CALCOM_MODE", originalCalcomMode);
   vi.resetModules();
   if (!hasDb || createdCallIds.length === 0) return;
   const { getDb } = await import("@/lib/db/client");

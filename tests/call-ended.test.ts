@@ -7,6 +7,7 @@ import type { POST as BookRouteFn } from "@/app/api/vaani/tools/book/route";
 import type { processCallEnded as ProcessCallEndedFn } from "@/lib/domain/call-ended";
 import { getCallByVaaniCallId, getNotificationsForCall, getHubspotSyncForCall, listActiveDesigners } from "@/lib/db/queries";
 import { CALL_FIXTURES } from "./fixtures/calls";
+import { restoreEnv } from "./helpers/restore-env";
 
 // This project's .env.local sets RESEND_MODE/GEMINI_MODE/CALCOM_MODE=live
 // (DECISIONS.md), but this suite patches designer emails to a reserved,
@@ -103,12 +104,12 @@ function testCallId(): string {
 }
 
 afterAll(async () => {
-  process.env.RESEND_MODE = originalResendMode;
-  process.env.GEMINI_MODE = originalGeminiMode;
-  process.env.CALCOM_MODE = originalCalcomMode;
-  process.env.HUBSPOT_MODE = originalHubspotMode;
+  restoreEnv("RESEND_MODE", originalResendMode);
+  restoreEnv("GEMINI_MODE", originalGeminiMode);
+  restoreEnv("CALCOM_MODE", originalCalcomMode);
+  restoreEnv("HUBSPOT_MODE", originalHubspotMode);
   if (originalFollowupEmail === undefined) delete process.env.FOLLOWUP_ALERT_EMAIL;
-  else process.env.FOLLOWUP_ALERT_EMAIL = originalFollowupEmail;
+  else restoreEnv("FOLLOWUP_ALERT_EMAIL", originalFollowupEmail);
   vi.resetModules();
   if (!hasDb) return;
   const { getDb } = await import("@/lib/db/client");

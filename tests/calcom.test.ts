@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import type { getCalcomClient as GetCalcomClientFn } from "@/lib/integrations/calcom";
+import { restoreEnv } from "./helpers/restore-env";
 
 // These exercise lib/db/queries.ts (listActiveDesigners), which needs a real
 // DATABASE_URL. Locally that comes from .env.local (loaded by
@@ -24,7 +25,7 @@ describeIfDb("calcom mock", () => {
   });
 
   afterAll(() => {
-    process.env.CALCOM_MODE = originalMode;
+    restoreEnv("CALCOM_MODE", originalMode);
     vi.resetModules();
   });
 

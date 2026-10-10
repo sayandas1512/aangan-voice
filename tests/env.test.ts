@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { env, envSchema } from "@/lib/env";
+import { restoreEnv } from "./helpers/restore-env";
 
 describe("env", () => {
   it("defaults INTEGRATIONS_MODE to mock", () => {
@@ -17,7 +18,7 @@ describe("env", () => {
     vi.resetModules();
     const fresh = await import("@/lib/env");
     expect(fresh.integrationMode("VAANI")).toBe(fresh.env.INTEGRATIONS_MODE);
-    process.env.VAANI_MODE = original;
+    restoreEnv("VAANI_MODE", original);
     vi.resetModules();
   });
 

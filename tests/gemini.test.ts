@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import type { GeminiClient } from "@/lib/integrations/gemini";
 import { CALL_FIXTURES } from "./fixtures/calls";
+import { restoreEnv } from "./helpers/restore-env";
 
 // This project's .env.local sets GEMINI_MODE=live (DECISIONS.md) — this
 // suite tests the deterministic mock classify logic specifically, so it
@@ -17,7 +18,7 @@ describe("gemini mock classify", () => {
   });
 
   afterAll(() => {
-    process.env.GEMINI_MODE = originalMode;
+    restoreEnv("GEMINI_MODE", originalMode);
     vi.resetModules();
   });
 

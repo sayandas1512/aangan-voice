@@ -6,6 +6,7 @@ import type { POST as SlotsRouteFn } from "@/app/api/vaani/tools/slots/route";
 import type { POST as BookRouteFn } from "@/app/api/vaani/tools/book/route";
 import type { POST as PreCallRouteFn } from "@/app/api/vaani/pre-call/route";
 import { CALL_FIXTURES } from "./fixtures/calls";
+import { restoreEnv } from "./helpers/restore-env";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -60,8 +61,8 @@ function testCallId(): string {
 }
 
 afterAll(async () => {
-  process.env.GEMINI_MODE = originalGeminiMode;
-  process.env.CALCOM_MODE = originalCalcomMode;
+  restoreEnv("GEMINI_MODE", originalGeminiMode);
+  restoreEnv("CALCOM_MODE", originalCalcomMode);
   vi.resetModules();
   if (!hasDb || createdCallIds.length === 0) return;
   const { getDb } = await import("@/lib/db/client");

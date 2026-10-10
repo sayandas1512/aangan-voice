@@ -1,6 +1,7 @@
 import { describe, expect, it, afterAll, beforeAll, vi } from "vitest";
 import { eq, and, gte, lte } from "drizzle-orm";
 import type { summarizeCall as SummarizeCallFn } from "@/lib/domain/summary";
+import { restoreEnv } from "./helpers/restore-env";
 
 // This project's .env.local sets GEMINI_MODE=live (DECISIONS.md) — this
 // suite tests the deterministic mock summarizer specifically, so it
@@ -22,7 +23,7 @@ const testRunStartedAt = new Date(Date.now() - 60_000); // 60s buffer for clock 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
 afterAll(async () => {
-  process.env.GEMINI_MODE = originalGeminiMode;
+  restoreEnv("GEMINI_MODE", originalGeminiMode);
   vi.resetModules();
   if (!hasDb) return;
   const { getDb } = await import("@/lib/db/client");
