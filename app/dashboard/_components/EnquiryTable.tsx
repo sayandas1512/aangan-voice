@@ -14,13 +14,14 @@ export default function EnquiryTable({ rows, emptyMessage }: { rows: EnquiryRow[
             <th>Result</th>
             <th className="hideSm">Consultation</th>
             <th className="hideSm">Outcome</th>
+            <th className="hideSm">Run cost</th>
             <th>Received</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={6} className="emptyRow">
+              <td colSpan={7} className="emptyRow">
                 {emptyMessage}
               </td>
             </tr>
@@ -76,6 +77,7 @@ export default function EnquiryTable({ rows, emptyMessage }: { rows: EnquiryRow[
                     <span className="cellMuted">—</span>
                   )}
                 </td>
+                <td className="hideSm cellMuted">{row.costInr > 0 ? `₹${row.costInr.toFixed(2)}` : "—"}</td>
                 <td>
                   <div>{formatDateTime(row.startedAt)}</div>
                   {row.afterHours && (

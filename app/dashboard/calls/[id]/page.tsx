@@ -4,12 +4,15 @@ import { connection } from "next/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { isDashboardAuthed } from "@/lib/api/dashboard-auth";
+import { env } from "@/lib/env";
+import { callEconomics } from "@/lib/domain/cost";
 import { getCallDetail } from "@/lib/domain/dashboard-metrics";
 import {
   OUTCOME_LABELS,
   formatDate,
   formatDateTime,
   formatDuration,
+  formatInr,
   formatTime,
   parseTranscript,
   reasonLabel,
@@ -86,6 +89,11 @@ export default async function CallDetailPage({
   const unclearFields = new Set(answers.filter((a) => a.unclear).map((a) => a.field));
   const transcript = parseTranscript(call.transcript);
   const bestOutcome = strongestOutcome(outcomes);
+  const economics = callEconomics({
+    durationSec: call.durationSec,
+    voiceCostInrPerMin: env.VOICE_COST_INR_PER_MIN,
+    wonAmountInr: bestOutcome?.outcome === "won" && bestOutcome.amountInr ? Number(bestOutcome.amountInr) : null,
+  });
   const emailNote = notifications.find((n) => n.channel === "email");
 
   // --- the assessment, in plain words
@@ -244,6 +252,31 @@ export default async function CallDetailPage({
           </div>
 
           <div className="stack">
+            <section className="card">
+              <div className="cardHead">
+                <h2 className="cardTitle">Economics</h2>
+                <span className="cardSub">What this call cost vs. what it earned</span>
+              </div>
+              <dl className="facts">
+                <div className="fact">
+                  <dt>Call length</dt>
+                  <dd>{formatDuration(call.durationSec)}</dd>
+                </div>
+                <div className="fact">
+                  <dt>Cost to run</dt>
+                  <dd>{economics.costInr > 0 ? `₹${economics.costInr.toFixed(2)}` : "—"}</dd>
+                </div>
+                <div className="fact">
+                  <dt>Won amount</dt>
+                  <dd>{economics.wonAmountInr ? formatInr(economics.wonAmountInr) : "Not won yet"}</dd>
+                </div>
+                <div className="fact">
+                  <dt>Won per ₹1 spent</dt>
+                  <dd>{economics.returnMultiple ? formatInr(economics.returnMultiple) : "—"}</dd>
+                </div>
+              </dl>
+            </section>
+
             <section className="card">
               <div className="cardHead">
                 <h2 className="cardTitle">Progress</h2>

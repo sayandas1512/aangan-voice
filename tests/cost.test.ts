@@ -62,3 +62,22 @@ describe("estimatedPipelineValue and actualWonValue stay separate", () => {
     expect(actualWonValue([900000, 1100000])).toBe(2000000);
   });
 });
+
+describe("callEconomics", () => {
+  it("prices the call by its minutes and shows the return when won", async () => {
+    const { callEconomics } = await import("@/lib/domain/cost");
+    const e = callEconomics({ durationSec: 180, voiceCostInrPerMin: 2.4, wonAmountInr: 2_000_000 });
+    expect(e.minutes).toBe(3);
+    expect(e.costInr).toBe(7.2);
+    expect(e.wonAmountInr).toBe(2_000_000);
+    expect(e.returnMultiple).toBe(277778);
+  });
+
+  it("has no return when nothing was won, and no cost for a call with no duration", async () => {
+    const { callEconomics } = await import("@/lib/domain/cost");
+    expect(callEconomics({ durationSec: 90, voiceCostInrPerMin: 2.4 }).returnMultiple).toBeNull();
+    const none = callEconomics({ durationSec: null, voiceCostInrPerMin: 2.4, wonAmountInr: 100 });
+    expect(none.costInr).toBe(0);
+    expect(none.returnMultiple).toBeNull();
+  });
+});

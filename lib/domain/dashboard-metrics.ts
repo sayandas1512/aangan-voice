@@ -14,7 +14,7 @@ import {
 } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { checkPriceGuard } from "@/lib/domain/price-guard";
-import { computeCallCost, costPerUnit, estimatedPipelineValue, actualWonValue } from "@/lib/domain/cost";
+import { callEconomics, computeCallCost, costPerUnit, estimatedPipelineValue, actualWonValue } from "@/lib/domain/cost";
 import { firstSentence, followupReason, type FollowupOwner } from "@/lib/domain/followup";
 import {
   dayKey,
@@ -194,6 +194,8 @@ export interface EnquiryRow {
   booking: { id: string; startAt: Date | null; designerName: string | null } | null;
   outcome: Outcome | null;
   wonAmountInr: number | null;
+  /** Voice cost of this call in INR (0 for calls with no recorded duration). */
+  costInr: number;
   hubspotUrl: string | undefined;
   hubspotStatus: HubspotRow["status"] | null;
 }
@@ -232,6 +234,7 @@ export function buildEnquiryRows(snap: Snapshot): EnquiryRow[] {
           : null,
         outcome: (best?.outcome as Outcome | undefined) ?? null,
         wonAmountInr: best?.outcome === "won" && best.amountInr ? Number(best.amountInr) : null,
+        costInr: callEconomics({ durationSec: call.durationSec, voiceCostInrPerMin: env.VOICE_COST_INR_PER_MIN }).costInr,
         hubspotUrl: hubspotDealUrl(hubspot?.dealId, env.HUBSPOT_PORTAL_ID, env.HUBSPOT_APP_BASE),
         hubspotStatus: hubspot?.status ?? null,
       } satisfies EnquiryRow;

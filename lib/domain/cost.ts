@@ -52,6 +52,30 @@ export function actualWonValue(wonAmountsInr: number[]): number {
   return round2(wonAmountsInr.reduce((sum, v) => sum + v, 0));
 }
 
+export interface CallEconomics {
+  minutes: number;
+  costInr: number;
+  wonAmountInr: number | null;
+  /** Won amount divided by what the call cost to run; null when nothing was won or the call has no cost yet. */
+  returnMultiple: number | null;
+}
+
+/**
+ * What one call cost to run against what it earned. Voice cost is minutes x
+ * the per-minute rate, the same maths as the dashboard's overall cost line, so
+ * the per-call figures add up to it (the fixed monthly cost isn't spread here).
+ */
+export function callEconomics(input: {
+  durationSec: number | null | undefined;
+  voiceCostInrPerMin: number;
+  wonAmountInr?: number | null;
+}): CallEconomics {
+  const minutes = Math.max(0, (input.durationSec ?? 0) / 60);
+  const costInr = round2(minutes * input.voiceCostInrPerMin);
+  const won = input.wonAmountInr && input.wonAmountInr > 0 ? input.wonAmountInr : null;
+  return { minutes, costInr, wonAmountInr: won, returnMultiple: won && costInr > 0 ? Math.round(won / costInr) : null };
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
