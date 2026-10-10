@@ -47,6 +47,9 @@ export async function POST(request: Request) {
   }
 
   const json = await request.json().catch(() => null);
+  // Which parameters the agent actually fills is decided by Vaani's extractor,
+  // not by us — log what arrived (answers only, no secrets) to debug gaps.
+  console.log("[classify] body", JSON.stringify(json));
   const parsed = BodySchema.safeParse(json);
   if (!parsed.success) {
     console.error("[classify] invalid body from caller", JSON.stringify({ json, errors: parsed.error.flatten() }));
