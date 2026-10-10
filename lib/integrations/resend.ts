@@ -4,6 +4,8 @@ export interface SendEmailInput {
   to: string;
   subject: string;
   text: string;
+  /** Optional rich version; `text` stays as the plain-text fallback. */
+  html?: string;
 }
 
 export interface SendEmailResult {
@@ -40,6 +42,7 @@ const liveClient: ResendClient = {
         to: input.to,
         subject: input.subject,
         text: input.text,
+        ...(input.html ? { html: input.html } : {}),
       }),
     });
     if (!res.ok) {

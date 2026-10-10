@@ -1,6 +1,6 @@
 import { describe, expect, it, afterAll } from "vitest";
 import { eq, and, gte, lte } from "drizzle-orm";
-import { buildDesignerNote, type DesignerNoteInput } from "@/lib/domain/note";
+import { buildDesignerNote, buildDesignerNoteHtml, type DesignerNoteInput } from "@/lib/domain/note";
 
 // The last test below triggers a real price_guard_violation event against
 // the shared production events table. Scope cleanup to this run's window
@@ -47,6 +47,23 @@ function baseInput(overrides: Partial<DesignerNoteInput> = {}): DesignerNoteInpu
     ...overrides,
   };
 }
+
+describe("buildDesignerNoteHtml", () => {
+  it("puts the outcome links under an after-the-meeting heading in the text note", async () => {
+    const note = await buildDesignerNote(baseInput());
+    expect(note.indexOf("After the meeting")).toBeGreaterThan(note.indexOf("Acknowledge:"));
+    expect(note.indexOf("After the meeting")).toBeLessThan(note.indexOf("Held:"));
+  });
+
+  it("renders buttons, and keeps the after-meeting outcomes apart from Acknowledge", async () => {
+    const html = await buildDesignerNoteHtml(baseInput({ callerName: "A <b>&</b> B" }));
+    expect(html).toContain(">Acknowledge</a>");
+    expect(html).toContain("After the meeting");
+    expect(html.indexOf("After the meeting")).toBeLessThan(html.indexOf(">Held</a>"));
+    expect(html.indexOf(">Acknowledge</a>")).toBeLessThan(html.indexOf("After the meeting"));
+    expect(html).toContain("A &lt;b&gt;&amp;&lt;/b&gt; B"); // caller-supplied text is escaped
+  });
+});
 
 describe("buildDesignerNote", () => {
   it("includes all the fields from the brief's template", async () => {

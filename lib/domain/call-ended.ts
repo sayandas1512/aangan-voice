@@ -16,7 +16,7 @@ import {
 } from "@/lib/db/queries";
 import { isAfterHours } from "@/lib/domain/after-hours";
 import { summarizeCall } from "@/lib/domain/summary";
-import { buildDesignerNote } from "@/lib/domain/note";
+import { buildDesignerNote, buildDesignerNoteHtml } from "@/lib/domain/note";
 import { buildActionUrl } from "@/lib/domain/action-link";
 import { attemptHubspotSync } from "@/lib/domain/hubspot-sync";
 import { nextRunAt } from "@/lib/domain/retry";
@@ -123,7 +123,7 @@ async function runCallEndedPipeline(input: CallEndedInput): Promise<"processed" 
     url: buildActionUrl({ callId: call.id, bookingId: booking.id, action }),
   }));
 
-  const note = await buildDesignerNote({
+  const noteInput = {
     bookingStartIso: (booking.startAt ?? new Date()).toISOString(),
     meetUrl: booking.meetUrl ?? "",
     callerName: answersMap.name || "Caller",
@@ -142,7 +142,9 @@ async function runCallEndedPipeline(input: CallEndedInput): Promise<"processed" 
     transcriptUrl: `${env.APP_BASE_URL}/dashboard/calls/${call.id}`,
     callId: call.id,
     actionLinks,
-  });
+  };
+  const note = await buildDesignerNote(noteInput);
+  const noteHtml = await buildDesignerNoteHtml(noteInput);
 
   // Email FIRST (brief section 7's "Telegram first" — now email, see
   // DECISIONS.md) — the designer must act within minutes; HubSpot can
@@ -154,6 +156,7 @@ async function runCallEndedPipeline(input: CallEndedInput): Promise<"processed" 
         to: designer.email,
         subject: `New consultation booked — ${answersMap.name || "Caller"}`,
         text: note,
+        html: noteHtml,
       });
       await markNotificationSent(notification.id);
     } catch (err) {
